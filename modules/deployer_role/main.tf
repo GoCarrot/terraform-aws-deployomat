@@ -96,7 +96,7 @@ data "aws_iam_policy_document" "allow-meta-account-assume" {
 }
 
 resource "aws_iam_role" "deployer" {
-  name        = "Deployer"
+  name        = var.role_name
   path        = "/${var.organization_prefix}/ci-service-role/"
   description = "Role to assume to manage deploys."
 

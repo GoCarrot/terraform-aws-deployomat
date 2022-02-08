@@ -43,3 +43,9 @@ variable "tags" {
   description = "Tags to apply to all resources. Will be deduplicated from default tags."
   default     = {}
 }
+
+variable "role_name" {
+  type        = string
+  description = "The name of the role created for performing deploys."
+  default     = "Deployer"
+}
