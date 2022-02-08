@@ -97,6 +97,40 @@ module "slack_notify" {
   deploy_sfn                 = module.deployomat.deploy_sfn
 }
 
+# These SSM parameters are optional but extremely useful for being able to integrate Deployomat
+# into a CI/CD workflow.
+#
+# Presuming your CI/CD workflow has AWS credentials which allow it to read SSM parameters and
+# assume the deployer role, you can use the following CLI commands and these parameters to
+# initiate a deploy.
+#
+# #!/bin/sh
+# PREFIX="/${ORGANIZATION_PREFIX}/${CICD_ENVIRONMENT}/${CICD_ACCOUNT_NAME}"
+# ROLE_ARN=$(aws ssm get-parameter --name "${PREFIX}/roles/deployer" --query Parameter.Value --output text)
+# DEPLOY_SFN=$(aws ssm get-parameter --name "${PREFIX}/config/${DEPLOYOMAT_SERVICE_NAME}/deploy_sfn" --query Parameter.Value --output text)
+# INPUT=$(jq --null-input '{"AccountName": $ENV.DEPLOY_ACCOUNT, "ServiceName": $ENV.DEPLOY_SERVICE, "AmiId": $ENV.DEPLOY_AMI}')
+# # Override our current AWS credentials with temporary credentials for the deploye role
+# eval $(aws sts assume-role --role-arn ${ROLE_ARN} --role-session-name "deploy_${DEPLOY_SERVICE}" |\
+#        jq -r '.Credentials | "export AWS_ACCESS_KEY_ID=\(.AccessKeyId)\nexport AWS_SECRET_ACCESS_KEY=\(.SecretAccessKey)\nexport AWS_SESSION_TOKEN=\(.SessionToken)\n"')
+# # Start the deploy.
+# aws stepfunctions start-execution --state-machine-arn ${DEPLOY_SFN} --input ${INPUT}
+resource "aws_ssm_parameter" "deployer_role" {
+  type  = "String"
+  name  = "/${var.organization_prefix}/${var.environment}/${var.account_name}/roles/deployer"
+  value = module.deployer.role.arn
+}
+
+resource "aws_ssm_parameter" "deploy_sfn_arn" {
+  type  = "String"
+  name  = "/${var.organization_prefix}/${var.environment}/${var.account_name}/config/${var.deployomat_service_name}/deploy_sfn"
+  value = module.deployomat.deploy_sfn.arn
+}
+
+resource "aws_ssm_parameter" "cancel_sfn_arn" {
+  type  = "String"
+  name  = "/${var.organization_prefix}/${var.environment}/${var.account_name}/config/${var.deployomat_service_name}/cancel_sfn"
+  value = module.deployomat.cancel_sfn.arn
+}
 ```
 
 While all resources can be provisioned into a single account, Deployomat is intended to be used in a multi-account organization containing at a minimum the following account types:
