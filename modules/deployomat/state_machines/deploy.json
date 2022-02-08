@@ -1,0 +1,340 @@
+{
+  "Comment": "Deploy a service to an account. Required inputs are AccountName, ServiceName, and AmiId. Optional inputs are DeployConfig.HealthTimeout, DeployConfig.WaitPerStep, DeployConfig.TrafficShiftPerStep, DeployConfig.BakeTime, and DeployConfig.OnConcurrentDeploy",
+  "StartAt": "StartDeploy",
+  "States": {
+    "StartDeploy": {
+      "Comment": "We take AllInput to extract DeployConfig from it without failing the state machine in the event no DeployConfig is provided.",
+      "Type": "Task",
+      "Parameters": {
+        "AccountName.$": "$.AccountName",
+        "ServiceName.$": "$.ServiceName",
+        "AmiId.$": "$.AmiId",
+        "DeployId.$": "$$.Execution.Name",
+        "AllInput.$": "$",
+        "Step": "Start"
+      },
+      "ResultPath": "$.StartDeploy",
+      "Resource": "${deploy_lambda_arn}",
+      "Next": "StartBranch",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.Error",
+          "Next": "Rollback"
+        }
+      ]
+    },
+    "StartBranch": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.StartDeploy.Status",
+          "StringEquals": "fail",
+          "Next": "Rollback"
+        },
+        {
+          "Variable": "$.StartDeploy.Status",
+          "StringEquals": "deploy_active",
+          "Next": "HandleConcurrentDeploy"
+        },
+        {
+          "Variable": "$.StartDeploy.Status",
+          "StringEquals": "wait_healthy",
+          "Next": "CheckHealthy"
+        },
+        {
+          "Variable": "$.StartDeploy.Status",
+          "StringEquals": "success",
+          "Next": "BakeDeploy"
+        }
+      ],
+      "Default": "Rollback"
+    },
+    "Fail": {
+      "Type": "Fail"
+    },
+    "HandleConcurrentDeploy": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.StartDeploy.OnConcurrentDeploy",
+          "StringEquals": "fail",
+          "Next": "Fail"
+        }
+      ],
+      "Default": "CancelConcurrentDeploy"
+    },
+    "CancelConcurrentDeploy": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Parameters": {
+        "StateMachineArn": "${cancel_deploy_state_machine_arn}",
+        "Input": {
+          "AccountName.$": "$.AccountName",
+          "ServiceName.$": "$.ServiceName",
+          "Comment.$": "States.Format('Cancelling concurrent deploy of {} in {}', $.ServiceName, $.AccountName)",
+          "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id"
+        }
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "StepFunctions.ExecutionLimitExceeded"
+          ]
+        }
+      ],
+      "ResultPath": null,
+      "Next": "StartDeploy"
+    },
+    "Rollback": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Parameters": {
+        "StateMachineArn": "${cancel_deploy_state_machine_arn}",
+        "Input": {
+          "AccountName.$": "$.AccountName",
+          "ServiceName.$": "$.ServiceName",
+          "Comment.$": "States.Format('Rolling back deploy of {} in {}', $.ServiceName, $.AccountName)",
+          "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id"
+        }
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "StepFunctions.ExecutionLimitExceeded"
+          ]
+        }
+      ],
+      "ResultPath": null,
+      "Next": "Fail"
+    },
+    "CheckHealthy": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Parameters": {
+        "StateMachineArn": "${loop_wait_state_state_machine_arn}",
+        "Input": {
+          "AccountName.$": "$.AccountName",
+          "ServiceName.$": "$.ServiceName",
+          "AmiId.$": "$.AmiId",
+          "DeployId.$": "$$.Execution.Name",
+          "WaitTime.$": "$.StartDeploy.WaitForHealthyTime",
+          "TargetGroupArn.$": "$.StartDeploy.NewTargetGroupArn",
+          "MinHealthy.$": "$.StartDeploy.MinHealthy",
+          "Step": "CheckHealthy",
+          "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id"
+        }
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "StepFunctions.ExecutionLimitExceeded"
+          ]
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.Error",
+          "Next": "Rollback"
+        }
+      ],
+      "ResultSelector": {
+        "Status.$": "$.Output"
+      },
+      "ResultPath": "$.CheckHealthyStatus",
+      "Next": "HealthyBranch"
+    },
+    "HealthyBranch": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.CheckHealthyStatus.Status",
+          "StringEquals": "complete",
+          "Next": "Rollout"
+        },
+        {
+          "Variable": "$.CheckHealthyStatus.Status",
+          "StringEquals": "deploy_aborted",
+          "Next": "CancelledDeploy"
+        }
+      ],
+      "Default": "Rollback"
+    },
+    "Rollout": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Parameters": {
+        "StateMachineArn": "${loop_wait_state_state_machine_arn}",
+        "Input": {
+          "AccountName.$": "$.AccountName",
+          "ServiceName.$": "$.ServiceName",
+          "AmiId.$": "$.AmiId",
+          "DeployId.$": "$$.Execution.Name",
+          "StepSize.$": "$.StartDeploy.TrafficShiftPerStep",
+          "StepDelay.$": "$.StartDeploy.WaitPerStep",
+          "RuleIds.$": "$.StartDeploy.RuleIds",
+          "TargetGroupArn.$": "$.StartDeploy.NewTargetGroupArn",
+          "OldTargetGroupArn.$": "$.StartDeploy.OldTargetGroupArn",
+          "Step": "Rollout",
+          "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id"
+        }
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "StepFunctions.ExecutionLimitExceeded"
+          ]
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.Error",
+          "Next": "Rollback"
+        }
+      ],
+      "ResultSelector": {
+        "Status.$": "$.Output"
+      },
+      "ResultPath": "$.RolloutStatus",
+      "Next": "RolloutBranch"
+    },
+    "RolloutBranch": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.RolloutStatus.Status",
+          "StringEquals": "complete",
+          "Next": "Coalesce"
+        },
+        {
+          "Variable": "$.RolloutStatus.Status",
+          "StringEquals": "deploy_aborted",
+          "Next": "CancelledDeploy"
+        }
+      ],
+      "Default": "Rollback"
+    },
+    "Coalesce": {
+      "Type": "Task",
+      "Parameters": {
+        "AccountName.$": "$.AccountName",
+        "ServiceName.$": "$.ServiceName",
+        "AmiId.$": "$.AmiId",
+        "DeployId.$": "$$.Execution.Name",
+        "TargetGroupArn.$": "$.StartDeploy.NewTargetGroupArn",
+        "RuleIds.$": "$.StartDeploy.RuleIds",
+        "Step": "Coalesce"
+      },
+      "ResultPath": "$.Coalesce",
+      "Resource": "${deploy_lambda_arn}",
+      "Next": "CoalesceBranch",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.Error",
+          "Next": "Rollback"
+        }
+      ]
+    },
+    "CoalesceBranch": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Coalesce.Status",
+          "StringEquals": "complete",
+          "Next": "BakeDeploy"
+        },
+        {
+          "Variable": "$.Coalesce.Status",
+          "StringEquals": "deploy_aborted",
+          "Next": "CancelledDeploy"
+        }
+      ],
+      "Default": "Rollback"
+    },
+    "BakeDeploy": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Parameters": {
+        "StateMachineArn": "${loop_wait_state_state_machine_arn}",
+        "Input": {
+          "AccountName.$": "$.AccountName",
+          "ServiceName.$": "$.ServiceName",
+          "AmiId.$": "$.AmiId",
+          "DeployId.$": "$$.Execution.Name",
+          "TargetGroupArn": "$.StartDeploy.NewTargetGroupArn",
+          "RuleIds.$": "$.StartDeploy.RuleIds",
+          "BakeTime.$": "$.StartDeploy.WaitForBakeTime",
+          "Step": "Bake",
+          "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id"
+        }
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "StepFunctions.ExecutionLimitExceeded"
+          ]
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.Error",
+          "Next": "Rollback"
+        }
+      ],
+      "ResultSelector": {
+        "Status.$": "$.Output"
+      },
+      "ResultPath": "$.BakeStatus",
+      "Next": "BakeBranch"
+    },
+    "BakeBranch": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.BakeStatus.Status",
+          "StringEquals": "complete",
+          "Next": "FinishDeploy"
+        },
+        {
+          "Variable": "$.BakeStatus.Status",
+          "StringEquals": "deploy_aborted",
+          "Next": "CancelledDeploy"
+        }
+      ],
+      "Default": "Rollback"
+    },
+    "FinishDeploy": {
+      "Type": "Task",
+      "Parameters": {
+        "AccountName.$": "$.AccountName",
+        "ServiceName.$": "$.ServiceName",
+        "DeployId.$": "$$.Execution.Name",
+        "Step": "Finish"
+      },
+      "Resource": "${deploy_lambda_arn}",
+      "End": true
+    },
+    "CancelledDeploy": {
+      "Comment": "Calling a deploy that got cancelled due to a concurrent deploy 'successful' to avoid spurious failure notifications.",
+      "Type": "Pass",
+      "End": true,
+      "Parameters": {
+        "Status": "deploy_aborted"
+      }
+    }
+  }
+}

@@ -1,0 +1,4 @@
+.terraform
+*.tfplan
+modules/deployomat/build
+modules/slack_notifier/build

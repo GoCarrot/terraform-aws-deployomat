@@ -1,0 +1,59 @@
+{
+  "Comment": "Cancel an in progress deploy. Required inputs are AccountName and ServiceName (to cancel a deploy of ServiceName in AccountName)",
+  "StartAt": "StartCancel",
+  "States": {
+    "StartCancel": {
+      "Type": "Task",
+      "Parameters": {
+        "AccountName.$": "$.AccountName",
+        "ServiceName.$": "$.ServiceName",
+        "DeployId.$": "$$.Execution.Name",
+        "Step": "Start"
+      },
+      "ResultPath": "$.StartResult",
+      "Resource": "${cancel_lambda_arn}",
+      "Next": "StartBranch"
+    },
+    "StartBranch": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.StartResult",
+          "StringEquals": "fail",
+          "Next": "Fail"
+        },
+        {
+          "Variable": "$.StartResult",
+          "StringEquals": "wait",
+          "Next": "PauseForCoalesce"
+        },
+        {
+          "Variable": "$.StartResult",
+          "StringEquals": "success",
+          "Next": "FinishCancel"
+        }
+      ],
+      "Default": "Fail"
+    },
+    "Fail": {
+      "Type": "Fail"
+    },
+    "PauseForCoalesce": {
+      "Comment": "The ALB rule configurations appear to be eventually consistent, this pause seems to be long enough to ensure that the ALB has stopped directing traffic to the ASG we're about to shut down.",
+      "Type": "Wait",
+      "Seconds": 15,
+      "Next": "FinishCancel"
+    },
+    "FinishCancel": {
+      "Type": "Task",
+      "Parameters": {
+        "AccountName.$": "$.AccountName",
+        "ServiceName.$": "$.ServiceName",
+        "DeployId.$": "$$.Execution.Name",
+        "Step": "Finish"
+      },
+      "Resource": "${cancel_lambda_arn}",
+      "End": true
+    }
+  }
+}

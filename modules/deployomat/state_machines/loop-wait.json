@@ -1,0 +1,58 @@
+{
+  "Comment": "Call a lambda in a loop, allowing the lambda to specify a time to wait before the next invocation and passing the result of the lambda back into it.",
+  "StartAt": "ProcessLoopStep",
+  "States": {
+    "ProcessLoopStep": {
+      "Type": "Task",
+      "ResultPath": "$.StepResult",
+      "Resource": "${deploy_lambda_arn}",
+      "Next": "StepBranch",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.Error",
+          "Next": "Rollback"
+        }
+      ]
+    },
+    "StepBranch": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.StepResult.Status",
+          "StringEquals": "complete",
+          "Next": "Success"
+        },
+        {
+          "Variable": "$.StepResult.Status",
+          "StringEquals": "wait",
+          "Next": "PauseForStep"
+        },
+        {
+          "Variable": "$.StepResult.Status",
+          "StringEquals": "deploy_aborted",
+          "Next": "CancelledDeploy"
+        }
+      ],
+      "Default": "Rollback"
+    },
+    "PauseForStep": {
+      "Type": "Wait",
+      "SecondsPath": "$.StepResult.Wait",
+      "Next": "ProcessLoopStep"
+    },
+    "Success": {
+      "OutputPath": "$.StepResult.Status",
+      "Type": "Succeed"
+    },
+    "CancelledDeploy": {
+      "OutputPath": "$.StepResult.Status",
+      "Type": "Succeed"
+    },
+    "Rollback": {
+      "Type": "Fail"
+    }
+  }
+}
