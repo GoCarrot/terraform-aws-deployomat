@@ -325,6 +325,10 @@ resource "aws_autoscaling_policy" "avg-cpu" {
 }
 ```
 
+#### Service Roles
+
+If the deployed EC2 instances have an IAM role associated with them, the IAM role _must_ have a path prefixed with `/${var.organization_prefix}/service-role`. Deployomat takes privilege escalation seriously and may only perform iam:PassRole operations for roles containing that prefix. This prevents Deployomat from being used to grant EC2 instances arbitrary roles, e.g. OrganizationAccountAccessRole.
+
 ### Running Deploys
 
 Deployomat is intended to be used by assuming the role configured by the deployer_role module and then starting the deploy_sfn AWS Step Functions state machine. The minimal input is a JSON document containing AccountName, ServiceName, and AmiId keys. For example, using the aws cli, `aws stepfunctions start-execution --state-machine-arn <DEPLOY_SFN_ARN> --input '{"AccountName":"workload-dev-0001", "ServiceName":"example", "AmiId": "ami-xxxx"}'`
