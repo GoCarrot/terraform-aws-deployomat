@@ -29,7 +29,7 @@ In short, a production Deployomat role may read parameters for _any_ environment
 ```hcl
 # Where the AWS provider is for an AWS account which stores SSM parameters.
 module "meta_access_role" {
-  source = "MODULE_PATH_GOES_HERE"
+  source = "GoCarrot/deployomat/aws//modules/meta_access_role"
 
   organization_prefix = "short_version_of_your_org_name"
   ci_cd_account_ids   = [list_of, aws_account_ids, deploymat_runs_in]
@@ -90,7 +90,7 @@ resource "aws_organizations_account" "ci_cd_prod" {
 }
 
 module "meta_access_role" {
-  source = "MODULE_PATH_GOES_HERE"
+  source = "GoCarrot/deployomat/aws//modules/meta_access_role"
 
   organization_prefix = local.organization_prefix
 

@@ -21,7 +21,7 @@ If the service being deployed has an associated IAM role, its path must be `/${v
 ```hcl
 # Where the AWS provider is for an AWS account which handles workloads of services to be deployed.
 module "deploy_access_role" {
-  source = "MODULE_PATH_GOES_HERE"
+  source = "GoCarrot/deployomat/aws//deploy_access_role"
 
   organization_prefix = "short_version_of_your_org_name"
   ci_cd_account_ids   = [list_of, aws_account_ids, deploymat_runs_in]
