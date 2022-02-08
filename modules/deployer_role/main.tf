@@ -12,6 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 3"
+    }
+  }
+}
+
 data "aws_partition" "current" {}
 data "aws_default_tags" "tags" {}
 
