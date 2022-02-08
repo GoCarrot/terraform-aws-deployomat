@@ -12,7 +12,7 @@ This is a complete example of a minimal deployomat setup.
 
 ```hcl
 module "deployomat_meta_access" {
-  source = "MODULE_PATH_GOES_HERE"
+  source = "GoCarrot/deployomat/aws//modules/meta_access_role"
 
   # IDs of accounts where deployomat installations may run.
   ci_cd_account_ids = [data.aws_caller_identity.sandbox.id]
@@ -27,7 +27,7 @@ module "deployomat_meta_access" {
 }
 
 module "deployomat_deploy_access" {
-  source = "MODULE_PATH_GOES_HERE"
+  source = "GoCarrot/deployomat/aws//modules/deploy_access_role"
 
   # IDs of accounts where deployomat installations may run.
   ci_cd_account_ids = [data.aws_caller_identity.sandbox.id]
@@ -51,7 +51,7 @@ resource "aws_ssm_parameter" "deployomat" {
 }
 
 module "deployomat" {
-  source = "MODULE_PATH_GOES_HERE"
+  source = "GoCarrot/deployomat/aws//modules/deployomat"
 
   deployomat_meta_role_arn = module.deployomat_meta_access.role.arn
   environment              = "development"
@@ -66,7 +66,7 @@ module "deployomat" {
 }
 
 module "deployer" {
-  source = "MODULE_PATH_GOES_HERE"
+  source = "GoCarrot/deployomat/aws//modules/deployer_role"
 
   deploy_sfn_arn = module.deployomat.deploy_sfn.arn
   cancel_sfn_arn = module.deployomat.cancel_sfn.arn
@@ -86,7 +86,7 @@ module "deployer" {
 }
 
 module "slack_notify" {
-  source = "MODULE_PATH_GOES_HERE"
+  source = "GoCarrot/deployomat/aws//modules/slack_notifier"
 
   # Must be a bot token that starts with xoxb.
   slack_bot_token            = var.slack_bot_token

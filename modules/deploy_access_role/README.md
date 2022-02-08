@@ -82,7 +82,7 @@ resource "aws_organizations_account" "ci_cd_prod" {
 }
 
 module "deploy_access_role" {
-  source = "MODULE_PATH_GOES_HERE"
+  source = "GoCarrot/deployomat/aws//modules/deploy_access_role"
 
   organization_prefix = local.organization_prefix
 

@@ -7,7 +7,7 @@ Terraform module which creates a Lambda (and optionally associated log group and
 ```hcl
 # Where the AWS provider is for an AWS account which contains the Deployomat.
 module "slack_notifier" {
-  source = "MODULE_PATH_GOES_HERE"
+  source = "GoCarrot/deployomat/aws//modules/slack_notifier"
 
   slack_bot_token            = "xoxb-xxxx"
   slack_notification_channel = "deploy-status"
