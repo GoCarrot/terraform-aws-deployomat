@@ -211,6 +211,8 @@ module Deployomat
     end
 
     def get(name)
+      return nil if name.nil? || name.empty?
+
       @client.describe_auto_scaling_groups(
         auto_scaling_group_names: [name]
       ).auto_scaling_groups.first
