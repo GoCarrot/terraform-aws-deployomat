@@ -45,7 +45,7 @@ module Deployomat
       deployomat_role = params.get("#{prefix}/roles/#{ENV['DEPLOYOMAT_SERVICE_NAME']}")
 
       asg = Asg.new(deployomat_role, deploy_id)
-      deploy_asg = asg.get(deploy_asg)
+      deploy_asg = asg.get(deploy_asg_name)
       production_asg = asg.get(production_asg) if production_asg
 
       listeners = begin
