@@ -63,36 +63,43 @@ module Deployomat
       end
 
       if !listeners.nil?
-        elbv2 = ElbV2.new(deployomat_role, deploy_id)
-
-        target_group = production_asg&.target_group_arns&.first || deploy_asg&.target_group_arns&.first
-
-        production_rules = listeners.map do |listener|
-          puts "Identifying deploy rule for listener #{listener}"
-          elbv2.find_rule_with_target_in_listener(
-            listener, target_group
-          )
-        end
-
-        puts "Asserting active for web cancel"
-        @config.assert_active
-        puts "Asserted active"
-
-        if production_asg
-          puts "Coalescing on production asg #{production_asg.auto_scaling_group_name}"
-          production_rules.each do |rule|
-            elbv2.coalesce(rule, production_asg.target_group_arns.first)
-          end
-          puts "Coalesced."
-          return :wait
-        else
-          puts "Destroying ALB rules"
-          production_rules.each do |rule|
-            elbv2.delete_rule(rule.rule_arn)
-            puts "Destroyed #{rule.rule_arn}"
-          end
-          return :success
+       return reset_listeners(listeners, deployomat_role, production_asg, deploy_asg)
       else
+        return :success
+      end
+    end
+
+  private
+
+    def reset_listeners(listeners, deployomat_role, production_asg, deploy_asg)
+      elbv2 = ElbV2.new(deployomat_role, deploy_id)
+
+      target_group = production_asg&.target_group_arns&.first || deploy_asg&.target_group_arns&.first
+
+      production_rules = listeners.map do |listener|
+        puts "Identifying deploy rule for listener #{listener}"
+        elbv2.find_rule_with_target_in_listener(
+          listener, target_group
+        )
+      end
+
+      puts "Asserting active for web cancel"
+      @config.assert_active
+      puts "Asserted active"
+
+      if production_asg
+        puts "Coalescing on production asg #{production_asg.auto_scaling_group_name}"
+        production_rules.each do |rule|
+          elbv2.coalesce(rule, production_asg.target_group_arns.first)
+        end
+        puts "Coalesced."
+        return :wait
+      else
+        puts "Destroying ALB rules"
+        production_rules.each do |rule|
+          elbv2.delete_rule(rule.rule_arn)
+          puts "Destroyed #{rule.rule_arn}"
+        end
         return :success
       end
     end
