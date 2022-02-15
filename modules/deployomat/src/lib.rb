@@ -468,6 +468,10 @@ module Deployomat
       @client.describe_rules(rule_arns: rule_arns).rules
     end
 
+    def delete_rule(rule_arn)
+      @client.delete_rule(rule_arn: rule_arn)
+    end
+
   private
 
     def modify_rule(new_rule)

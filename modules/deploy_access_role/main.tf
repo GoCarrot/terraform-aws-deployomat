@@ -128,7 +128,8 @@ data "aws_iam_policy_document" "allow-deploy" {
   statement {
     actions = [
       "elasticloadbalancing:ModifyRule",
-      "elasticloadbalancing:ModifyTargetGroupAttributes"
+      "elasticloadbalancing:ModifyTargetGroupAttributes",
+      "elasticloadbalancing:DeleteRule"
     ]
 
     resources = [

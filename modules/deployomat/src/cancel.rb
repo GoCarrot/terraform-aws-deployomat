@@ -36,7 +36,6 @@ module Deployomat
       production_asg = @config.production_asg
       if production_asg.nil? || production_asg.empty?
         puts "No production ASG of #{service_name} in #{account_name} to failover to"
-        return :fail
       end
 
       puts "Asserting start of cancel"
@@ -47,7 +46,7 @@ module Deployomat
 
       asg = Asg.new(deployomat_role, deploy_id)
       deploy_asg = asg.get(deploy_asg)
-      production_asg = asg.get(production_asg)
+      production_asg = asg.get(production_asg) if production_asg
 
       listeners = begin
         params.get("#{prefix}/config/#{service_name}/listener_arns")
@@ -57,15 +56,21 @@ module Deployomat
       end
 
       puts "Aborting deploy of #{deploy_asg.auto_scaling_group_name}."
-      puts "Failing over to #{production_asg.auto_scaling_group_name}."
+      if production_asg
+        puts "Failing over to #{production_asg.auto_scaling_group_name}."
+      else
+        puts "Resetting to clean state."
+      end
 
       if !listeners.nil?
         elbv2 = ElbV2.new(deployomat_role, deploy_id)
 
+        target_group = production_asg&.target_group_arns&.first || deploy_asg&.target_group_arns&.first
+
         production_rules = listeners.map do |listener|
           puts "Identifying deploy rule for listener #{listener}"
           elbv2.find_rule_with_target_in_listener(
-            listener, production_asg.target_group_arns.first
+            listener, target_group
           )
         end
 
@@ -73,13 +78,20 @@ module Deployomat
         @config.assert_active
         puts "Asserted active"
 
-        puts "Coalescing on production asg #{production_asg.auto_scaling_group_name}"
-        production_rules.each do |rule|
-          elbv2.coalesce(rule, production_asg.target_group_arns.first)
-        end
-        puts "Coalesced."
-
-        return :wait
+        if production_asg
+          puts "Coalescing on production asg #{production_asg.auto_scaling_group_name}"
+          production_rules.each do |rule|
+            elbv2.coalesce(rule, production_asg.target_group_arns.first)
+          end
+          puts "Coalesced."
+          return :wait
+        else
+          puts "Destroying ALB rules"
+          production_rules.each do |rule|
+            elbv2.delete_rule(rule.rule_arn)
+            puts "Destroyed #{rule.rule_arn}"
+          end
+          return :success
       else
         return :success
       end
@@ -109,14 +121,13 @@ module Deployomat
       production_asg = @config.production_asg
       if production_asg.nil? || production_asg.empty?
         puts "No production ASG of #{service_name} in #{account_name} to failover to"
-        return :fail
       end
 
       deployomat_role = params.get("#{prefix}/roles/#{ENV['DEPLOYOMAT_SERVICE_NAME']}")
       asg = Asg.new(deployomat_role, deploy_id)
 
       deploy_asg = asg.get(deploy_asg)
-      production_asg = asg.get(production_asg)
+      production_asg = asg.get(production_asg) if production_asg
 
       puts "Destroying previous asg #{deploy_asg.auto_scaling_group_name}"
       asg.destroy(deploy_asg.auto_scaling_group_name)
@@ -133,11 +144,16 @@ module Deployomat
       @config.assert_active
       puts "Asserted active."
 
-      puts "Restoring ASG scale in on #{production_asg.auto_scaling_group_name}"
-      asg.set_min_size(production_asg)
+      if production_asg
+        puts "Restoring ASG scale in on #{production_asg.auto_scaling_group_name}"
+        asg.set_min_size(production_asg)
 
-      puts "Finalizing cancel."
-      @config.set_production_asg(production_asg.auto_scaling_group_name)
+        puts "Finalizing cancel."
+        @config.set_production_asg(production_asg.auto_scaling_group_name)
+      else
+        puts "Resetting to clean state."
+        @config.set_production_asg('')
+      end
     end
   end
 end
