@@ -202,7 +202,6 @@ module Deployomat
     REMOVE_HOOK_PARAMS = %i[global_timeout auto_scaling_group_name].freeze
     REMOVE_TAG_PARAMS = %i[resource_id resource_type].freeze
     REMOVE_POLICY_PARAMS = %i[policy_arn alarms].freeze
-    DEFAULT_MIN_SIZE = 1
     DEFAULT_MAX_SIZE = 4
 
     def initialize(role_arn, deploy_id)
@@ -295,7 +294,7 @@ module Deployomat
         tags: tags,
         desired_capacity_type: template_asg.desired_capacity_type,
         max_size: max_size || DEFAULT_MAX_SIZE,
-        min_size: [min_size.to_i, default_min_size.to_i, DEFAULT_MIN_SIZE].max,
+        min_size: [min_size.to_i, default_min_size.to_i].max,
       }
 
       if target_group_arn
