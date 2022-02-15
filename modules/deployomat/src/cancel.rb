@@ -27,8 +27,8 @@ module Deployomat
     end
 
     def call
-      deploy_asg = @config.deploy_asg
-      if deploy_asg.nil? || deploy_asg.empty?
+      deploy_asg_name = @config.deploy_asg
+      if deploy_asg_name.nil? || deploy_asg_name.empty?
         puts "No deployment of #{service_name} in #{account_name} active"
         return :fail
       end
@@ -55,7 +55,7 @@ module Deployomat
         nil
       end
 
-      puts "Aborting deploy of #{deploy_asg.auto_scaling_group_name}."
+      puts "Aborting deploy of #{deploy_asg_name}."
       if production_asg
         puts "Failing over to #{production_asg.auto_scaling_group_name}."
       else
@@ -119,8 +119,8 @@ module Deployomat
       @config.assert_active
       puts "Asserted active"
 
-      deploy_asg = @config.deploy_asg
-      if deploy_asg.nil? || deploy_asg.empty?
+      deploy_asg_name = @config.deploy_asg
+      if deploy_asg_name.nil? || deploy_asg_name.empty?
         puts "No deployment of #{service_name} in #{account_name} active"
         return :fail
       end
@@ -133,18 +133,23 @@ module Deployomat
       deployomat_role = params.get("#{prefix}/roles/#{ENV['DEPLOYOMAT_SERVICE_NAME']}")
       asg = Asg.new(deployomat_role, deploy_id)
 
-      deploy_asg = asg.get(deploy_asg)
+      deploy_asg = asg.get(deploy_asg_name)
       production_asg = asg.get(production_asg) if production_asg
 
-      puts "Destroying previous asg #{deploy_asg.auto_scaling_group_name}"
-      asg.destroy(deploy_asg.auto_scaling_group_name)
+      if deploy_asg
+        puts "Destroying previous asg #{deploy_asg.auto_scaling_group_name}"
+        asg.destroy(deploy_asg.auto_scaling_group_name)
 
-      tg_arn = deploy_asg.target_group_arns&.first
-      if !tg_arn.nil? && !tg_arn.empty?
-        elbv2 = ElbV2.new(deployomat_role, deploy_id)
+        tg_arn = deploy_asg.target_group_arns&.first
+        if !tg_arn.nil? && !tg_arn.empty?
+          elbv2 = ElbV2.new(deployomat_role, deploy_id)
 
-        puts "Destroying previous target group #{tg_arn}"
-        elbv2.destroy_tg(tg_arn)
+          puts "Destroying previous target group #{tg_arn}"
+          elbv2.destroy_tg(tg_arn)
+        end
+      else
+        puts "Notice: Deploy ASG was not provisioned. It is possible that there is a dangling unused target group."
+        puts "This currently requires manual cleanup."
       end
 
       puts "Asserting active cancel before reenabling scale in"
