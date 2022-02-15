@@ -1,3 +1,13 @@
+## 0.0.3
+
+ENHANCEMENTS:
+
+* Support "rollback" of an intial deployment. This will reset to as clean a state as possible.
+
+KNOWN ISSUES:
+
+* If deployment of a web service encounters an error when cloning the template autoscaling group the cloned target groups will not be deleted by the rollback.
+
 ## 0.0.2
 
 ENHANCEMENTS:
