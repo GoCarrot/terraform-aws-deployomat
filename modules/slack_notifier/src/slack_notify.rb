@@ -27,6 +27,9 @@ module SlackNotify
   def self.notification_for_event(event)
     detail = event['detail']
     input = JSON.parse(detail['input'])
+
+    return nil if input.dig('DeployConfig', 'SkipNotifications')
+
     status = detail['status']
     deployment_desc = "#{input['ServiceName']} to #{input['AccountName']} (AMI <https://console.aws.amazon.com/ec2/v2/home?region=#{ENV['AWS_REGION']}#ImageDetails:imageId=#{input['AmiId']}|#{input['AmiId']}>, Execution <https://console.aws.amazon.com/states/home?region=#{ENV['AWS_REGION']}#/executions/details/#{detail['executionArn']}|#{detail['name']}>)"
     if status == 'RUNNING'
@@ -53,6 +56,10 @@ module SlackNotify
       channel: ENV['SLACK_CHANNEL'],
       text: notification_for_event(event)
     }
+
+    if request[:text].nil? || request[:text].empty?
+      return "Skipping notification."
+    end
 
     response = Net::HTTP.start(POST_MESSAGE.host, POST_MESSAGE.port, use_ssl: true) do |http|
       http.post(POST_MESSAGE.path, JSON.generate(request), HEADERS)
