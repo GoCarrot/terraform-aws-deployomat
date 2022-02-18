@@ -280,6 +280,8 @@ module Deployomat
         tags.push({ key: 'Managed', value: MANAGED_TAG })
       end
 
+      max_size = max_size || DEFAULT_MAX_SIZE
+
       new_asg_parameters = {
         auto_scaling_group_name: name,
         launch_template: {
@@ -295,8 +297,8 @@ module Deployomat
         termination_policies: template_asg.termination_policies,
         tags: tags,
         desired_capacity_type: template_asg.desired_capacity_type,
-        max_size: max_size || DEFAULT_MAX_SIZE,
-        min_size: [min_size.to_i, default_min_size.to_i].max,
+        max_size: max_size
+        min_size: [[min_size.to_i, default_min_size.to_i].max, max_size].min
       }
 
       if target_group_arn

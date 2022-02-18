@@ -1,3 +1,9 @@
+## 0.0.4
+
+BUG FIXES:
+
+* If the production auto scaling group is temporarily above its max instance count, clamp instance count for the new auto scaling group to the configured max instance count.
+
 ## 0.0.3
 
 ENHANCEMENTS:
