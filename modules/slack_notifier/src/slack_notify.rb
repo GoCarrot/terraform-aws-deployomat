@@ -54,8 +54,6 @@ module SlackNotify
       text: notification_for_event(event)
     }
 
-    puts JSON.generate(event)
-
     response = Net::HTTP.start(POST_MESSAGE.host, POST_MESSAGE.port, use_ssl: true) do |http|
       http.post(POST_MESSAGE.path, JSON.generate(request), HEADERS)
     end
