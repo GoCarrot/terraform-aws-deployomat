@@ -1,3 +1,9 @@
+## 0.0.5
+
+ENHANCEMENTS:
+
+* Support AWS Provider 4.x.
+
 ## 0.0.4
 
 BUG FIXES:
