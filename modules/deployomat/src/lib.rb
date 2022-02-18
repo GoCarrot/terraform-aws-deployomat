@@ -251,7 +251,7 @@ module Deployomat
     def prevent_scale_in(asg)
       @client.update_auto_scaling_group(
         auto_scaling_group_name: asg.auto_scaling_group_name,
-        min_size: [asg.instances.length, asg.min_size].max
+        min_size: [[asg.instances.length, asg.min_size].max, asg.max_size].min
       )
     end
 
