@@ -297,7 +297,7 @@ module Deployomat
         termination_policies: template_asg.termination_policies,
         tags: tags,
         desired_capacity_type: template_asg.desired_capacity_type,
-        max_size: max_size
+        max_size: max_size,
         min_size: [[min_size.to_i, default_min_size.to_i].max, max_size].min
       }
 

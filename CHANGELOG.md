@@ -1,3 +1,9 @@
+## 0.0.6
+
+BUG FIXES:
+
+* Don't have syntax errors.
+
 ## 0.0.5
 
 ENHANCEMENTS:
