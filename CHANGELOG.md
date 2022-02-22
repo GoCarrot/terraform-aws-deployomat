@@ -1,3 +1,13 @@
+## 0.0.8
+
+BUG FIXES:
+
+* When cancelling a deploy, if listener_arns are configured but no rules are found, complete the cancel.
+
+ENHANCEMENTS:
+
+* If the deployment configuration includes a truthy SkipNotifications input, slack notifier will not ping slack.
+
 ## 0.0.7
 
 BUG FIXES:
