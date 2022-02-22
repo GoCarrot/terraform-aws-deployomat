@@ -28,16 +28,18 @@ module SlackNotify
     detail = event['detail']
     input = JSON.parse(detail['input'])
 
-    return nil if input.dig('DeployConfig', 'SkipNotifications')
+    skip_notifications = input.dig('DeployConfig', 'SkipNotifications')
 
     status = detail['status']
     deployment_desc = "#{input['ServiceName']} to #{input['AccountName']} (AMI <https://console.aws.amazon.com/ec2/v2/home?region=#{ENV['AWS_REGION']}#ImageDetails:imageId=#{input['AmiId']}|#{input['AmiId']}>, Execution <https://console.aws.amazon.com/states/home?region=#{ENV['AWS_REGION']}#/executions/details/#{detail['executionArn']}|#{detail['name']}>)"
     if status == 'RUNNING'
+      return nil if skip_notifications
       "Started deployment of #{deployment_desc}"
     elsif status == 'SUCCEEDED'
       output = JSON.parse(detail['output'])
       out_status = output['Status']
       if out_status == 'complete'
+        return nil if skip_notifications
         "Completed deployment of #{deployment_desc}"
       elsif out_status == 'deploy_aborted'
         "Aborted deployment of #{deployment_desc}"
