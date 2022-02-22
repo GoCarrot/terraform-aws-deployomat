@@ -81,7 +81,9 @@ module Deployomat
         elbv2.find_rule_with_target_in_listener(
           listener, target_group
         )
-      end
+      end.compact
+
+      return :success if production_rules.empty?
 
       puts "Asserting active for web cancel"
       @config.assert_active
