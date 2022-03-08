@@ -75,6 +75,7 @@ data "aws_iam_policy_document" "allow-ssm-read" {
   statement {
     actions = ["ssm:GetParameter"]
     resources = [
+      "arn:${data.aws_partition.current.partition}:ssm:*:${data.aws_caller_identity.current.id}:parameter/omat/account_registry/*",
       "arn:${data.aws_partition.current.partition}:ssm:*:${data.aws_caller_identity.current.id}:parameter/${var.organization_prefix}/&{aws:PrincipalTag/Environment}/*/config/*",
       "arn:${data.aws_partition.current.partition}:ssm:*:${data.aws_caller_identity.current.id}:parameter/${var.organization_prefix}/&{aws:PrincipalTag/Environment}/*/roles/${var.deployomat_service_name}",
     ]
