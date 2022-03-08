@@ -205,7 +205,6 @@ resource "aws_lambda_function" "deployomat-cancel" {
 
   environment {
     variables = {
-      DEPLOYOMAT_ORG_PREFIX    = var.organization_prefix,
       DEPLOYOMAT_META_ROLE_ARN = var.deployomat_meta_role_arn,
       DEPLOYOMAT_ENV           = local.environment,
       DEPLOYOMAT_TABLE         = aws_dynamodb_table.state.name
@@ -236,7 +235,6 @@ resource "aws_lambda_function" "deployomat-deploy" {
 
   environment {
     variables = {
-      DEPLOYOMAT_ORG_PREFIX    = var.organization_prefix,
       DEPLOYOMAT_META_ROLE_ARN = var.deployomat_meta_role_arn,
       DEPLOYOMAT_ENV           = local.environment,
       DEPLOYOMAT_TABLE         = aws_dynamodb_table.state.name
