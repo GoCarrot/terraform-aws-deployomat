@@ -24,7 +24,7 @@ module LambdaFunctions
   class Handler
     def self.cancel(event:, context:)
       args = {
-        account_name: event['AccountName'], service_name: event['ServiceName'],
+        account_canonical_slug: event['AccountCanonicalSlug'], service_name: event['ServiceName'],
         deploy_id: "cancel-#{event['DeployId']}"
       }
       config = Deployomat::Config.new(args)
@@ -39,7 +39,7 @@ module LambdaFunctions
 
     def self.deploy(event:, context:)
       args = {
-        account_name: event['AccountName'], service_name: event['ServiceName'],
+        account_canonical_slug: event['AccountCanonicalSlug'], service_name: event['ServiceName'],
         deploy_id: "deploy-#{event['DeployId']}"
       }
       config = Deployomat::Config.new(args)

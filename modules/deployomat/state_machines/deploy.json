@@ -1,12 +1,12 @@
 {
-  "Comment": "Deploy a service to an account. Required inputs are AccountName, ServiceName, and AmiId. Optional inputs are DeployConfig.HealthTimeout, DeployConfig.WaitPerStep, DeployConfig.TrafficShiftPerStep, DeployConfig.BakeTime, and DeployConfig.OnConcurrentDeploy",
+  "Comment": "Deploy a service to an account. Required inputs are AccountCanonicalSlug, ServiceName, and AmiId. Optional inputs are DeployConfig.HealthTimeout, DeployConfig.WaitPerStep, DeployConfig.TrafficShiftPerStep, DeployConfig.BakeTime, and DeployConfig.OnConcurrentDeploy",
   "StartAt": "StartDeploy",
   "States": {
     "StartDeploy": {
       "Comment": "We take AllInput to extract DeployConfig from it without failing the state machine in the event no DeployConfig is provided.",
       "Type": "Task",
       "Parameters": {
-        "AccountName.$": "$.AccountName",
+        "AccountCanonicalSlug.$": "$.AccountCanonicalSlug",
         "ServiceName.$": "$.ServiceName",
         "AmiId.$": "$.AmiId",
         "DeployId.$": "$$.Execution.Name",
@@ -72,9 +72,9 @@
       "Parameters": {
         "StateMachineArn": "${cancel_deploy_state_machine_arn}",
         "Input": {
-          "AccountName.$": "$.AccountName",
+          "AccountCanonicalSlug.$": "$.AccountCanonicalSlug",
           "ServiceName.$": "$.ServiceName",
-          "Comment.$": "States.Format('Cancelling concurrent deploy of {} in {}', $.ServiceName, $.AccountName)",
+          "Comment.$": "States.Format('Cancelling concurrent deploy of {} in {}', $.ServiceName, $.AccountCanonicalSlug)",
           "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id"
         }
       },
@@ -94,9 +94,9 @@
       "Parameters": {
         "StateMachineArn": "${cancel_deploy_state_machine_arn}",
         "Input": {
-          "AccountName.$": "$.AccountName",
+          "AccountCanonicalSlug.$": "$.AccountCanonicalSlug",
           "ServiceName.$": "$.ServiceName",
-          "Comment.$": "States.Format('Rolling back deploy of {} in {}', $.ServiceName, $.AccountName)",
+          "Comment.$": "States.Format('Rolling back deploy of {} in {}', $.ServiceName, $.AccountCanonicalSlug)",
           "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id"
         }
       },
@@ -116,7 +116,7 @@
       "Parameters": {
         "StateMachineArn": "${loop_wait_state_state_machine_arn}",
         "Input": {
-          "AccountName.$": "$.AccountName",
+          "AccountCanonicalSlug.$": "$.AccountCanonicalSlug",
           "ServiceName.$": "$.ServiceName",
           "AmiId.$": "$.AmiId",
           "DeployId.$": "$$.Execution.Name",
@@ -171,7 +171,7 @@
       "Parameters": {
         "StateMachineArn": "${loop_wait_state_state_machine_arn}",
         "Input": {
-          "AccountName.$": "$.AccountName",
+          "AccountCanonicalSlug.$": "$.AccountCanonicalSlug",
           "ServiceName.$": "$.ServiceName",
           "AmiId.$": "$.AmiId",
           "DeployId.$": "$$.Execution.Name",
@@ -225,7 +225,7 @@
     "Coalesce": {
       "Type": "Task",
       "Parameters": {
-        "AccountName.$": "$.AccountName",
+        "AccountCanonicalSlug.$": "$.AccountCanonicalSlug",
         "ServiceName.$": "$.ServiceName",
         "AmiId.$": "$.AmiId",
         "DeployId.$": "$$.Execution.Name",
@@ -268,7 +268,7 @@
       "Parameters": {
         "StateMachineArn": "${loop_wait_state_state_machine_arn}",
         "Input": {
-          "AccountName.$": "$.AccountName",
+          "AccountCanonicalSlug.$": "$.AccountCanonicalSlug",
           "ServiceName.$": "$.ServiceName",
           "AmiId.$": "$.AmiId",
           "DeployId.$": "$$.Execution.Name",
@@ -320,7 +320,7 @@
     "FinishDeploy": {
       "Type": "Task",
       "Parameters": {
-        "AccountName.$": "$.AccountName",
+        "AccountCanonicalSlug.$": "$.AccountCanonicalSlug",
         "ServiceName.$": "$.ServiceName",
         "DeployId.$": "$$.Execution.Name",
         "Step": "Finish"

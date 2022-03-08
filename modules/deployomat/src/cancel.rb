@@ -42,9 +42,7 @@ module Deployomat
       @config.assert_start_cancel
       puts "Cancel operation asserted"
 
-      deployomat_role = params.get("#{prefix}/roles/#{ENV['DEPLOYOMAT_SERVICE_NAME']}")
-
-      asg = Asg.new(deployomat_role, deploy_id)
+      asg = Asg.new(@config)
       deploy_asg = asg.get(deploy_asg_name)
       production_asg = asg.get(production_asg) if production_asg
 
@@ -63,7 +61,7 @@ module Deployomat
       end
 
       if !listeners.nil?
-       return reset_listeners(listeners, deployomat_role, production_asg, deploy_asg)
+       return reset_listeners(listeners, production_asg, deploy_asg)
       else
         return :success
       end
@@ -71,8 +69,8 @@ module Deployomat
 
   private
 
-    def reset_listeners(listeners, deployomat_role, production_asg, deploy_asg)
-      elbv2 = ElbV2.new(deployomat_role, deploy_id)
+    def reset_listeners(listeners, production_asg, deploy_asg)
+      elbv2 = ElbV2.new(@config)
 
       target_group = production_asg&.target_group_arns&.first || deploy_asg&.target_group_arns&.first
 
@@ -132,8 +130,7 @@ module Deployomat
         puts "No production ASG of #{service_name} in #{account_name} to failover to"
       end
 
-      deployomat_role = params.get("#{prefix}/roles/#{ENV['DEPLOYOMAT_SERVICE_NAME']}")
-      asg = Asg.new(deployomat_role, deploy_id)
+      asg = Asg.new(@config)
 
       deploy_asg = asg.get(deploy_asg_name)
       production_asg = asg.get(production_asg) if production_asg
@@ -144,7 +141,7 @@ module Deployomat
 
         tg_arn = deploy_asg.target_group_arns&.first
         if !tg_arn.nil? && !tg_arn.empty?
-          elbv2 = ElbV2.new(deployomat_role, deploy_id)
+          elbv2 = ElbV2.new(@config)
 
           puts "Destroying previous target group #{tg_arn}"
           elbv2.destroy_tg(tg_arn)

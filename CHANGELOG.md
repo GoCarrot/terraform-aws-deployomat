@@ -1,3 +1,9 @@
+## 0.1.0
+
+BREAKING CHANGES:
+
+* AccountName is no longer a valid input. Instead, you must provide AccountCanonicalSlug, which must be the canonical slug for an account managed by [Accountomat](https://github.com/GoCarrot/terraform-aws-accountomat).
+
 ## 0.0.8
 
 BUG FIXES:

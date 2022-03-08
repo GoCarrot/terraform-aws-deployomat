@@ -1,11 +1,11 @@
 {
-  "Comment": "Cancel an in progress deploy. Required inputs are AccountName and ServiceName (to cancel a deploy of ServiceName in AccountName)",
+  "Comment": "Cancel an in progress deploy. Required inputs are AccountCanonicalSlug and ServiceName (to cancel a deploy of ServiceName in AccountCanonicalSlug)",
   "StartAt": "StartCancel",
   "States": {
     "StartCancel": {
       "Type": "Task",
       "Parameters": {
-        "AccountName.$": "$.AccountName",
+        "AccountCanonicalSlug.$": "$.AccountCanonicalSlug",
         "ServiceName.$": "$.ServiceName",
         "DeployId.$": "$$.Execution.Name",
         "Step": "Start"
@@ -47,7 +47,7 @@
     "FinishCancel": {
       "Type": "Task",
       "Parameters": {
-        "AccountName.$": "$.AccountName",
+        "AccountCanonicalSlug.$": "$.AccountCanonicalSlug",
         "ServiceName.$": "$.ServiceName",
         "DeployId.$": "$$.Execution.Name",
         "Step": "Finish"

@@ -65,9 +65,7 @@ module Deployomat
         return { Status: :fail }
       end
 
-      deployomat_role = params.get("#{prefix}/roles/#{ENV['DEPLOYOMAT_SERVICE_NAME']}")
-
-      asg = Asg.new(deployomat_role, deploy_id)
+      asg = Asg.new(@config)
 
       template_asg_name = "#{service_name}-template"
       puts "Fetching template asg..."
@@ -89,12 +87,12 @@ module Deployomat
         end
       end
 
-      ec2 = Ec2.new(deployomat_role, deploy_id)
+      ec2 = Ec2.new(@config)
       puts "Creating launch template version..."
       lt = ec2.create_launch_template_version(template_asg.launch_template.launch_template_id, ami_id)
       puts "Created launch template version #{lt.version_number}"
 
-      elbv2 = ElbV2.new(deployomat_role, deploy_id)
+      elbv2 = ElbV2.new(@config)
       # TODO: Support multiple target groups per asg.
       exemplar_tg_arn = template_asg.target_group_arns&.first
       new_target_group = nil
@@ -176,9 +174,7 @@ module Deployomat
     end
 
     def call
-      deployomat_role = params.get("#{prefix}/roles/#{ENV['DEPLOYOMAT_SERVICE_NAME']}")
-
-      elbv2 = ElbV2.new(deployomat_role, deploy_id)
+      elbv2 = ElbV2.new(@config)
 
       puts "Asserting active deploy"
       begin
@@ -220,9 +216,7 @@ module Deployomat
     end
 
     def call
-      deployomat_role = params.get("#{prefix}/roles/#{ENV['DEPLOYOMAT_SERVICE_NAME']}")
-
-      elbv2 = ElbV2.new(deployomat_role, deploy_id)
+      elbv2 = ElbV2.new(@config)
 
       production_rules = elbv2.describe_rules(rule_ids)
 
@@ -261,9 +255,7 @@ module Deployomat
     end
 
     def call
-      deployomat_role = params.get("#{prefix}/roles/#{ENV['DEPLOYOMAT_SERVICE_NAME']}")
-
-      elbv2 = ElbV2.new(deployomat_role, deploy_id)
+      elbv2 = ElbV2.new(@config)
 
       production_rules = elbv2.describe_rules(rule_ids)
 
@@ -317,8 +309,7 @@ module Deployomat
     end
 
     def call
-      deployomat_role = params.get("#{prefix}/roles/#{ENV['DEPLOYOMAT_SERVICE_NAME']}")
-      asg = Asg.new(deployomat_role, deploy_id)
+      asg = Asg.new(@config)
 
       puts "Asserting active deploy"
       begin
@@ -350,7 +341,7 @@ module Deployomat
         asg.destroy(production_asg.auto_scaling_group_name)
 
         if production_tg_arn
-          elbv2 = ElbV2.new(deployomat_role, deploy_id)
+          elbv2 = ElbV2.new(@config)
 
           puts "Destroying previous target group #{production_tg_arn}"
           elbv2.destroy_tg(production_tg_arn)

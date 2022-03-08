@@ -20,9 +20,11 @@ require 'aws-sdk-ec2'
 require 'aws-sdk-elasticloadbalancingv2'
 require 'aws-sdk-ssm'
 
+require 'json'
+
 module Deployomat
   MANAGED_TAG = ENV['DEPLOYOMAT_SERVICE_NAME']
-  ORG_PREFIX = ENV['DEPLOYOMAT_ORG_PREFIX']
+  DEPLOY_ROLE_NAME = ENV['DEPLOYOMAT_SERVICE_NAME']
 
   class CredentialCache
     def self.meta_role_credentials(deploy_id)
@@ -74,18 +76,30 @@ module Deployomat
   end
 
   class Config
-    attr_reader :account_name, :service_name, :prefix, :deploy_id, :params
+    attr_reader :account_canonical_slug, :account_name, :service_name, :prefix, :deploy_id, :params, :organization_prefix
 
-    def initialize(account_name:, service_name:, deploy_id:, account_env: nil)
+    def initialize(account_canonical_slug:, service_name:, deploy_id:)
       @client = Aws::DynamoDB::Client.new
-      @account_name = account_name
+      @account_canonical_slug = account_canonical_slug
       @service_name = service_name
-      @account_env = account_env || ENV['DEPLOYOMAT_ENV']
-      @prefix = "/#{ENV['DEPLOYOMAT_ORG_PREFIX']}/#{@account_env}/#{@account_name}"
-      @primary_key = "#{account_name}.#{service_name}"
-      @deploy_id = deploy_id
       @params = Parameters.new(deploy_id)
+      account_info = begin
+        JSON.parse(params.get("/omat/account_registry/#{@account_canonical_slug}"), symbolize_names: true)
+      rescue Aws::SSM::ParameterNotFound
+        raise "Unable to locate account information for #{@account_canonical_slug}"
+      end
+
+      @prefix = account_info[:prefix]
+      @organization_prefix = @prefix.split('/')[0]
+      @account_name = account_info[:name]
+      @primary_key = "#{account_canonical_slug}.#{service_name}"
+      @deploy_id = deploy_id
+
       reload
+    end
+
+    def deploy_role_arn
+      @deploy_role_arn ||= parms.get("#{prefix}/roles/#{DEPLOY_ROLE_NAME}")
     end
 
     def reload
@@ -181,9 +195,9 @@ module Deployomat
   end
 
   class Ec2
-    def initialize(role_arn, deploy_id)
+    def initialize(config)
       @client = Aws::EC2::Client.new(
-        credentials: CredentialCache.role_credentials(role_arn, deploy_id)
+        credentials: CredentialCache.role_credentials(config.deploy_role_arn, config.deploy_id)
       )
     end
 
@@ -204,9 +218,10 @@ module Deployomat
     REMOVE_POLICY_PARAMS = %i[policy_arn alarms].freeze
     DEFAULT_MAX_SIZE = 4
 
-    def initialize(role_arn, deploy_id)
+    def initialize(config)
+      @org_prefix = config.organization_prefix
       @client = Aws::AutoScaling::Client.new(
-        credentials: CredentialCache.role_credentials(role_arn, deploy_id)
+        credentials: CredentialCache.role_credentials(config.deploy_role_arn, config.deploy_id)
       )
     end
 
@@ -229,7 +244,7 @@ module Deployomat
       min_size = asg.min_size
       asg.tags.each do |tag|
         tag = tag.to_h
-        min_size = tag[:value].to_i if tag[:key] == "#{ORG_PREFIX}:min_size"
+        min_size = tag[:value].to_i if tag[:key] == "#{@org_prefix}:min_size"
       end
 
       @client.update_auto_scaling_group(
@@ -269,8 +284,8 @@ module Deployomat
       tags.each do |tag|
         REMOVE_TAG_PARAMS.each { |param| tag.delete(param) }
 
-        max_size = tag[:value].to_i if tag[:key] == "#{ORG_PREFIX}:max_size"
-        default_min_size = tag[:value].to_i if tag[:key] == "#{ORG_PREFIX}:min_size"
+        max_size = tag[:value].to_i if tag[:key] == "#{@org_prefix}:max_size"
+        default_min_size = tag[:value].to_i if tag[:key] == "#{@org_prefix}:min_size"
       end
 
       managed = tags.find { |tag| tag[:key] == 'Managed' }
@@ -336,9 +351,9 @@ module Deployomat
     REMOVE_MODIFY_RULE_PARAMS = %i[is_default priority].freeze
     PRIORITY_OFFSET = 40_000
 
-    def initialize(role_arn, deploy_id)
+    def initialize(config)
       @client = Aws::ElasticLoadBalancingV2::Client.new(
-        credentials: CredentialCache.role_credentials(role_arn, deploy_id)
+        credentials: CredentialCache.role_credentials(config.deploy_role_arn, config.deploy_id)
       )
     end
 
