@@ -1,3 +1,9 @@
+## 0.1.1
+
+BUG FIXES:
+
+* Fixed typo in Config#deploy_role_arn
+
 ## 0.1.0
 
 BREAKING CHANGES:

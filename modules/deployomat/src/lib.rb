@@ -99,7 +99,7 @@ module Deployomat
     end
 
     def deploy_role_arn
-      @deploy_role_arn ||= parms.get("#{prefix}/roles/#{DEPLOY_ROLE_NAME}")
+      @deploy_role_arn ||= params.get("#{prefix}/roles/#{DEPLOY_ROLE_NAME}")
     end
 
     def reload
