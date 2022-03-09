@@ -1,3 +1,9 @@
+## 0.1.2
+
+BUG FIXES:
+
+* Fixed Config retrieving organization prefix from account prefix.
+
 ## 0.1.1
 
 BUG FIXES:

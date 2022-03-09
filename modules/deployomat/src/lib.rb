@@ -90,7 +90,7 @@ module Deployomat
       end
 
       @prefix = account_info[:prefix]
-      @organization_prefix = @prefix.split('/')[0]
+      @organization_prefix = @prefix.split('/').reject(&:empty?)[0]
       @account_name = account_info[:name]
       @primary_key = "#{account_canonical_slug}.#{service_name}"
       @deploy_id = deploy_id
