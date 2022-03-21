@@ -323,6 +323,7 @@
         "AccountCanonicalSlug.$": "$.AccountCanonicalSlug",
         "ServiceName.$": "$.ServiceName",
         "DeployId.$": "$$.Execution.Name",
+        "AllowUndeploy.$": "$.StartDeploy.AllowUndeploy",
         "Step": "Finish"
       },
       "Resource": "${deploy_lambda_arn}",
