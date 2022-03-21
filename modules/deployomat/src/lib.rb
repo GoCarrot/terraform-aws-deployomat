@@ -76,7 +76,11 @@ module Deployomat
   end
 
   class Config
-    attr_reader :account_canonical_slug, :account_name, :service_name, :prefix, :deploy_id, :params, :organization_prefix
+    UNDEPLOYING = 'undeploying'
+    ALLOW = 'allow'
+
+    attr_reader :account_canonical_slug, :account_name, :service_name, :prefix,
+                :deploy_id, :params, :organization_prefix, :account_environment
 
     def initialize(account_canonical_slug:, service_name:, deploy_id:)
       @client = Aws::DynamoDB::Client.new
@@ -92,6 +96,7 @@ module Deployomat
       @prefix = account_info[:prefix]
       @organization_prefix = @prefix.split('/').reject(&:empty?)[0]
       @account_name = account_info[:name]
+      @account_environment = account_info[:environment]
       @primary_key = "#{account_canonical_slug}.#{service_name}"
       @deploy_id = deploy_id
 
@@ -143,16 +148,40 @@ module Deployomat
         return_values: 'ALL_NEW',
         key: { 'id' => @primary_key },
         update_expression: 'SET #DEPLOY_ID = :new_deploy_id, #DEPLOY_ASG = :deploy_asg',
-        condition_expression: '(attribute_not_exists(#DEPLOY_ID) OR #DEPLOY_ID = :old_deploy_id) AND (attribute_not_exists(#DEPLOY_ASG) OR #DEPLOY_ASG = :empty)',
+        condition_expression: '(attribute_not_exists(#DEPLOY_ID) OR #DEPLOY_ID = :old_deploy_id) AND (attribute_not_exists(#DEPLOY_ASG) OR #DEPLOY_ASG = :empty) AND (attribute_not_exists(#UNDEPLOY_STATE) OR #UNDEPLOY_STATE <> :undeploying)',
         expression_attribute_names: {
           '#DEPLOY_ID' => 'deploy_id',
-          '#DEPLOY_ASG' => 'deploy_asg_name'
+          '#DEPLOY_ASG' => 'deploy_asg_name',
+          '#UNDEPLOY_STATE' => 'undeploy_state'
         },
         expression_attribute_values: {
           ':new_deploy_id' => @deploy_id,
           ':old_deploy_id' => @config&.fetch('deploy_id', nil),
           ':empty' => '',
-          ':deploy_asg' => name
+          ':deploy_asg' => name,
+          ':undeploying' => UNDEPLOYING
+        }
+      ).attributes
+    end
+
+    def assert_start_undeploy
+      @config = @client.update_item(
+        table_name: ENV['DEPLOYOMAT_TABLE'],
+        return_values: 'ALL_NEW',
+        key: { 'id' => @primary_key },
+        update_expression: 'SET #DEPLOY_ID = :new_deploy_id, #UNDEPLOY_STATE = :undeploying',
+        condition_expression: '(attribute_not_exists(#DEPLOY_ID) OR #DEPLOY_ID = :old_deploy_id) AND (attribute_not_exists(#DEPLOY_ASG) OR #DEPLOY_ASG = :empty) AND (#UNDEPLOY_STATE = :allow OR #UNDEPLOY_STATE = :undeploying)',
+        expression_attribute_names: {
+          '#DEPLOY_ID' => 'deploy_id',
+          '#DEPLOY_ASG' => 'deploy_asg',
+          '#UNDEPLOY_STATE' => 'undeploy_state'
+        },
+        expression_attribute_values: {
+          ':new_deploy_id' => @deploy_id,
+          ':old_deploy_id' => @config&.fetch('deploy_id', nil),
+          ':empty' => '',
+          ':undeploying' => UNDEPLOYING,
+          ':allow' => ALLOW
         }
       ).attributes
     end
@@ -173,22 +202,24 @@ module Deployomat
       ).attributes
     end
 
-    def set_production_asg(name)
+    def set_production_asg(name, allow_undeploy: false)
       @config = @client.update_item(
         table_name: ENV['DEPLOYOMAT_TABLE'],
         return_values: 'ALL_NEW',
         key: { 'id' => @primary_key },
-        update_expression: 'SET #PROD_ASG = :prod_asg, #DEPLOY_ASG = :empty',
+        update_expression: 'SET #PROD_ASG = :prod_asg, #DEPLOY_ASG = :empty, #UNDEPLOY_STATE = :undeploy_state',
         condition_expression: '#DEPLOY_ID = :deploy_id',
         expression_attribute_names: {
           '#DEPLOY_ID' => 'deploy_id',
           '#PROD_ASG' => 'production_asg_name',
-          '#DEPLOY_ASG' => 'deploy_asg_name'
+          '#DEPLOY_ASG' => 'deploy_asg_name',
+          '#UNDEPLOY_STATE' => 'undeploy_state'
         },
         expression_attribute_values: {
           ':deploy_id' => @deploy_id,
           ':prod_asg' => name,
-          ':empty' => ''
+          ':empty' => '',
+          ':undeploy_state' => allow_undeploy ? ALLOW : ''
         }
       ).attributes
     end
