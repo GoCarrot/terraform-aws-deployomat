@@ -84,6 +84,9 @@ module Deployomat
         if deploy_asg && !deploy_asg.empty?
           puts "Deployment of #{service_name} in #{account_name} still in progress"
           return { Status: :deploy_active, OnConcurrentDeploy: @on_concurrent_deploy }
+        elsif @config.undeploying?
+          puts "Undeploy of #{service_name} in #{account_name} in progress."
+          return { Status: :undeploying }
         else
           return { Status: :fail }
         end

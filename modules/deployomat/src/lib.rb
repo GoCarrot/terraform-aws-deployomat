@@ -123,6 +123,14 @@ module Deployomat
       @config&.fetch('deploy_asg_name', nil)
     end
 
+    def undeploying?
+      @config&.fetch('undeploy_state', '') == UNDEPLOYING
+    end
+
+    def undeployable?
+      @config&.fetch('undeploy_state', '') == ALLOW
+    end
+
     def assert_start_cancel
       @config = @client.update_item(
         table_name: ENV['DEPLOYOMAT_TABLE'],
