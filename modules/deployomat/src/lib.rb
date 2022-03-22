@@ -227,7 +227,9 @@ module Deployomat
       ).attributes
     end
 
-    def set_production_asg(name, allow_undeploy: false)
+    def set_production_asg(name, allow_undeploy: nil)
+      allow_undeploy = undeploying? || undeployable? if allow_undeploy.nil?
+
       @config = @client.update_item(
         table_name: ENV['DEPLOYOMAT_TABLE'],
         return_values: 'ALL_NEW',
