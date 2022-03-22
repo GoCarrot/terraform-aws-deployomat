@@ -8,7 +8,7 @@
         "AccountCanonicalSlug.$": "$.AccountCanonicalSlug",
         "ServiceName.$": "$.ServiceName",
         "DeployId.$": "$$.Execution.Name",
-        "AllInput.$": "$",
+        "AllInput.$": "$"
       },
       "ResultPath": "$.StartResult",
       "Resource": "${undeploy_lambda_arn}",
