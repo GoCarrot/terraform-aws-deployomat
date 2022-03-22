@@ -28,7 +28,7 @@
           "Next": "HandleConcurrentDeploy"
         },
         {
-          "Variable": "$.StartResult",
+          "Variable": "$.StartResult.Status",
           "StringEquals": "success",
           "Next": "Success"
         }
