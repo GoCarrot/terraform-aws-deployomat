@@ -89,6 +89,8 @@ module Deployomat
       end
 
       @config.complete_undeploy
+
+      return { Status: :success }
     end
   end
 end
