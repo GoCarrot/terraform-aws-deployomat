@@ -195,7 +195,7 @@ module Deployomat
     end
 
     def complete_undeploy
-      @config = @cliet.delete_item(
+      @config = @client.delete_item(
         table_name: ENV['DEPLOYOMAT_TABLE'],
         return_values: 'ALL_OLD',
         key: { 'id' => @primary_key },
