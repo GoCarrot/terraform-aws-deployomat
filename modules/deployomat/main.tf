@@ -502,7 +502,7 @@ resource "aws_sfn_state_machine" "deploy" {
 }
 
 resource "aws_sfn_state_machine" "undeploy" {
-  name     = "Deployomat-Uneploy"
+  name     = "Deployomat-Undeploy"
   role_arn = aws_iam_role.deployomat-sfn.arn
   definition = templatefile(
     "${path.module}/state_machines/undeploy.json",
