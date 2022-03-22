@@ -41,6 +41,11 @@
         },
         {
           "Variable": "$.StartDeploy.Status",
+          "StringEquals": "undeploying",
+          "Next": "Fail"
+        },
+        {
+          "Variable": "$.StartDeploy.Status",
           "StringEquals": "wait_healthy",
           "Next": "CheckHealthy"
         },
