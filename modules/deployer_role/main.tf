@@ -27,7 +27,8 @@ data "aws_default_tags" "tags" {}
 locals {
   deployer_accessible_state_machines = [
     var.deploy_sfn_arn,
-    var.cancel_sfn_arn
+    var.cancel_sfn_arn,
+    var.undeploy_sfn_arn
   ]
 
   our_tags = var.tags
