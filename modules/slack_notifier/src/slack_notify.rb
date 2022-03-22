@@ -43,6 +43,8 @@ module SlackNotify
         "Completed deployment of #{deployment_desc}"
       elsif out_status == 'deploy_aborted'
         "Aborted deployment of #{deployment_desc}"
+      elsif out_status == 'fail'
+        "Failed deployment of #{deployment_desc}\n\n#{output['Error'].join("\n")}"
       else
         "Unknown success result for #{deployment_desc}: #{out_status}"
       end

@@ -34,6 +34,11 @@
           "Variable": "$.StepResult.Status",
           "StringEquals": "deploy_aborted",
           "Next": "CancelledDeploy"
+        },
+        {
+          "Variable": "$.StepResult.Status",
+          "StringEquals": "fail",
+          "Next": "CancelledDeploy"
         }
       ],
       "Default": "Rollback"
@@ -44,11 +49,11 @@
       "Next": "ProcessLoopStep"
     },
     "Success": {
-      "OutputPath": "$.StepResult.Status",
+      "OutputPath": "$.StepResult",
       "Type": "Succeed"
     },
     "CancelledDeploy": {
-      "OutputPath": "$.StepResult.Status",
+      "OutputPath": "$.StepResult",
       "Type": "Succeed"
     },
     "Rollback": {

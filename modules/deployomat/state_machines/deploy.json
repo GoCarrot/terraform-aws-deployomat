@@ -32,7 +32,7 @@
         {
           "Variable": "$.StartDeploy.Status",
           "StringEquals": "fail",
-          "Next": "Rollback"
+          "Next": "KnownStartError"
         },
         {
           "Variable": "$.StartDeploy.Status",
@@ -57,6 +57,24 @@
       ],
       "Default": "Rollback"
     },
+    "KnownStartError": {
+      "Type": "Pass",
+      "End": true,
+      "Parameters": {
+        "Status": "fail",
+        "Error.$": "$.StartDeploy.Error"
+      }
+    },
+    "FailConcurrentDeploy": {
+      "Type": "Pass",
+      "End": true,
+      "Parameters": {
+        "Status": "fail",
+        "Error": [
+          "A different deploy is running concurrently, and this deploy was configured to fail in such a case."
+        ]
+      }
+    },
     "Fail": {
       "Type": "Fail"
     },
@@ -66,7 +84,7 @@
         {
           "Variable": "$.StartDeploy.OnConcurrentDeploy",
           "StringEquals": "fail",
-          "Next": "Fail"
+          "Next": "FailConcurrentDeploy"
         }
       ],
       "Default": "CancelConcurrentDeploy"
@@ -115,6 +133,28 @@
       "ResultPath": null,
       "Next": "Fail"
     },
+    "RollbackFromCheckHealthy": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Parameters": {
+        "StateMachineArn": "${cancel_deploy_state_machine_arn}",
+        "Input": {
+          "AccountCanonicalSlug.$": "$.AccountCanonicalSlug",
+          "ServiceName.$": "$.ServiceName",
+          "Comment.$": "States.Format('Rolling back deploy of {} in {}', $.ServiceName, $.AccountCanonicalSlug)",
+          "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id"
+        }
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "StepFunctions.ExecutionLimitExceeded"
+          ]
+        }
+      ],
+      "ResultPath": null,
+      "Next": "KnownHealthError"
+    },
     "CheckHealthy": {
       "Type": "Task",
       "Resource": "arn:aws:states:::states:startExecution.sync:2",
@@ -149,26 +189,39 @@
         }
       ],
       "ResultSelector": {
-        "Status.$": "$.Output"
+        "Output.$": "$.Output"
       },
-      "ResultPath": "$.CheckHealthyStatus",
+      "ResultPath": "$.CheckHealthy",
       "Next": "HealthyBranch"
     },
     "HealthyBranch": {
       "Type": "Choice",
       "Choices": [
         {
-          "Variable": "$.CheckHealthyStatus.Status",
+          "Variable": "$.CheckHealthy.Output.Status",
           "StringEquals": "complete",
           "Next": "Rollout"
         },
         {
-          "Variable": "$.CheckHealthyStatus.Status",
+          "Variable": "$.CheckHealthy.Output.Status",
           "StringEquals": "deploy_aborted",
           "Next": "CancelledDeploy"
+        },
+        {
+          "Variable": "$.CheckHealthy.Output.Status",
+          "StringEquals": "fail",
+          "Next": "RollbackFromCheckHealthy"
         }
       ],
       "Default": "Rollback"
+    },
+    "KnownHealthError": {
+      "Type": "Pass",
+      "End": true,
+      "Parameters": {
+        "Status": "fail",
+        "Error.$": "$.CheckHealthy.Output.Error"
+      }
     },
     "Rollout": {
       "Type": "Task",
@@ -206,7 +259,7 @@
         }
       ],
       "ResultSelector": {
-        "Status.$": "$.Output"
+        "Output.$": "$.Output"
       },
       "ResultPath": "$.RolloutStatus",
       "Next": "RolloutBranch"
@@ -215,12 +268,12 @@
       "Type": "Choice",
       "Choices": [
         {
-          "Variable": "$.RolloutStatus.Status",
+          "Variable": "$.RolloutStatus.Output.Status",
           "StringEquals": "complete",
           "Next": "Coalesce"
         },
         {
-          "Variable": "$.RolloutStatus.Status",
+          "Variable": "$.RolloutStatus.Output.Status",
           "StringEquals": "deploy_aborted",
           "Next": "CancelledDeploy"
         }
@@ -301,7 +354,7 @@
         }
       ],
       "ResultSelector": {
-        "Status.$": "$.Output"
+        "Output.$": "$.Output"
       },
       "ResultPath": "$.BakeStatus",
       "Next": "BakeBranch"
@@ -310,12 +363,12 @@
       "Type": "Choice",
       "Choices": [
         {
-          "Variable": "$.BakeStatus.Status",
+          "Variable": "$.BakeStatus.Output.Status",
           "StringEquals": "complete",
           "Next": "FinishDeploy"
         },
         {
-          "Variable": "$.BakeStatus.Status",
+          "Variable": "$.BakeStatus.Output.Status",
           "StringEquals": "deploy_aborted",
           "Next": "CancelledDeploy"
         }

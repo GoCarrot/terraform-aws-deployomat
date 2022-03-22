@@ -46,25 +46,18 @@ module Deployomat
       @health_timeout = deploy_config.fetch('HealthTimeout', DEFAULT_HEALTH_TIMEOUT)
       @on_concurrent_deploy = deploy_config.fetch('OnConcurrentDeploy', DEFAULT_ON_CONCURRENT_DEPLOY)
       @allow_undeploy = deploy_config.fetch('AllowUndeploy', @config.account_environment != 'production')
+      @errors = []
     end
 
     def call
-      error = false
       if ami_id.nil? || ami_id.empty?
-        puts "No AMI specified"
-        error = true
+        error "No AMI specified"
       end
 
       GREATER_THAN_ZERO.each do |check_attr|
         if send(check_attr) < 0
-          puts "#{check_attr} must be greater than zero"
-          error = true
+          error "#{check_attr} must be greater than zero"
         end
-      end
-
-      if error
-        puts "Failing due to invalid configuration."
-        return { Status: :fail }
       end
 
       asg = Asg.new(@config)
@@ -74,9 +67,12 @@ module Deployomat
       template_asg = asg.get(template_asg_name)
 
       if !template_asg
-        error = "Could not load #{template_asg_name}. Is ServiceName correct?"
-        puts error
-        return { Status: :fail, Error: error }
+        error "Could not load #{template_asg_name}. Is ServiceName correct?"
+      end
+
+      if !@errors.empty?
+        puts "Failing due to invalid configuration."
+        return error_response
       end
 
       production_asg = @config.production_asg&.yield_self { |name| asg.get(name) }
@@ -91,11 +87,11 @@ module Deployomat
           puts "Deployment of #{service_name} in #{account_name} still in progress"
           return { Status: :deploy_active, OnConcurrentDeploy: @on_concurrent_deploy }
         elsif @config.undeploying?
-          error = "Undeploy of #{service_name} in #{account_name} in progress."
-          puts error
-          return { Status: :undeploying, Error: error }
+          error "Undeploy of #{service_name} in #{account_name} in progress."
+          return error_response(:undeploying)
         else
-          return { Status: :fail }
+          error "Failed to assert active deploy for unknown reason."
+          return error_response
         end
       end
 
@@ -124,8 +120,8 @@ module Deployomat
         begin
           @config.assert_active
         rescue Aws::DynamoDB::Errors::ConditionalCheckFailedException
-          puts "No longer active deploy."
-          return { Status: :fail }
+          error "No longer active deploy."
+          return error_response
         end
         puts "Asserted active"
         puts "Preventing scale-in of #{production_asg.auto_scaling_group_name}"
@@ -167,6 +163,17 @@ module Deployomat
                  NewTargetGroupArn: '', AllowUndeploy: allow_undeploy }
       end
     end
+
+  private
+
+    def error(msg)
+      puts msg
+      @errors << msg
+    end
+
+    def error_response(status = :fail)
+      { Status: status, Error: @errors }
+    end
   end
 
   class CheckHealthy
@@ -207,7 +214,7 @@ module Deployomat
       elsif remaining_time >= seconds_to_wait
         { Status: :wait, Wait: seconds_to_wait, RemainingTime: remaining_time - seconds_to_wait }
       else
-        { Status: :fail }
+        { Status: :fail, Error: ["Service did not become healthy. Have #{healthy_count} of #{min_healthy} instances."] }
       end
     end
   end
