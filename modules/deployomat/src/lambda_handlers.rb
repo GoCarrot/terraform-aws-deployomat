@@ -17,6 +17,7 @@
 require_relative 'lib'
 require_relative 'cancel'
 require_relative 'deploy'
+require_relative 'undeploy'
 
 require 'json'
 
