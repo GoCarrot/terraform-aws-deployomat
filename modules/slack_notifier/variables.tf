@@ -43,6 +43,14 @@ variable "deploy_sfn" {
   description = "The deployment step functions state machine."
 }
 
+variable "undeploy_sfn" {
+  type = object({
+    arn  = string
+    name = string
+  })
+  description = "The undeploy step functions state machine."
+}
+
 variable "lambda_iam_role_arn" {
   type        = string
   description = "The ARN of an IAM role to assign to the created lambda. The only required permissions are for logging. If null, this module will create a suitable IAM role and policy."

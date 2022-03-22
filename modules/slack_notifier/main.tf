@@ -125,6 +125,8 @@ resource "aws_lambda_function" "deployomat-slack-notify" {
     variables = {
       SLACK_CHANNEL   = var.slack_notification_channel
       SLACK_BOT_TOKEN = var.slack_bot_token
+      DEPLOY_SFN_ARN  = var.deploy_sfn.arn
+      UNDEPLOY_SFN_ARN = var.undeploy_sfn.arn
     }
   }
 
@@ -138,13 +140,13 @@ resource "aws_lambda_function" "deployomat-slack-notify" {
 
 resource "aws_cloudwatch_event_rule" "deploy-run" {
   name        = "${var.deploy_sfn.name}Executions"
-  description = "Matches all execution state changes on ${var.deploy_sfn.name}"
+  description = "Matches all execution state changes on ${var.deploy_sfn.name} or ${var.undeploy_sfn.name}"
 
   event_pattern = jsonencode({
     source      = ["aws.states"],
     detail-type = ["Step Functions Execution Status Change"],
     detail = {
-      stateMachineArn = [var.deploy_sfn.arn]
+      stateMachineArn = [var.deploy_sfn.arn, var.undeploy_sfn.arn]
     }
   })
 

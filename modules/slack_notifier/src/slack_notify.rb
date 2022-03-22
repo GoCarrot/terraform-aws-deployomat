@@ -55,12 +55,32 @@ module SlackNotify
     end
   end
 
-  def self.handler(event:, context:)
-    request = {
-      channel: ENV['SLACK_CHANNEL'],
-      text: notification_for_event(event)
-    }
+  def self.notification_for_undeploy(event)
+    detail = event['detail']
+    input = JSON.parse(detail['input'])
 
+    status = detail['status']
+    deployment_desc = "#{input['ServiceName']} from #{input['AccountCanonicalSlug']}"
+    if status == 'RUNNING'
+      "Started undeploy of #{deployment_desc}"
+    elsif sttaus == 'SUCCEEDED'
+      output = JSON.parse(detail['output'])
+      out_status = output['Status']
+      if out_status == 'complete'
+        "Completed undeployment of #{deployment_desc}"
+      elsif out_status == 'fail'
+        "Failed undeployment of #{deployment_desc}\n\n#{output['Error'].join("\n")}"
+      else
+        "Unknown success result for #{deployment_desc}: #{out_status}"
+      end
+    elsif status == 'FAILED'
+      "Failed undeployment of #{deployment_desc}"
+    else
+      "#{status}: undeployment of #{deployment_desc} -- LIKELY IN AN INCONSISTENT STATE"
+    end
+  end
+
+  def self.notify(request)
     if request[:text].nil? || request[:text].empty?
       return "Skipping notification."
     end
@@ -74,5 +94,22 @@ module SlackNotify
     else
       return "Successfully notified #{ENV['SLACK_CHANNEL']}"
     end
+  end
+
+  def self.handler(event:, context:)
+    request = {
+      channel: ENV['SLACK_CHANNEL'],
+    }
+    sfn_arn = event.dig('detail', 'stateMachineArn')
+    if sfn_arn == ENV['DEPLOY_SFN_ARN']
+      request[:text] = notification_for_event(event)
+    elsif sfn_arn == ENV['UNDEPLOY_SFN_ARN']
+      request[:text] = notification_for_undeploy(event)
+    else
+      puts event
+      return "Unknown state function trigger #{sfn_arn}"
+    end
+
+    notify(request)
   end
 end
