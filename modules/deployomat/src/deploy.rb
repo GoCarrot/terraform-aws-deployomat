@@ -73,6 +73,12 @@ module Deployomat
       puts "Fetching template asg..."
       template_asg = asg.get(template_asg_name)
 
+      if !template_asg
+        error = "Could not load #{template_asg_name}. Is ServiceName correct?"
+        puts error
+        return { Status: :fail, Error: error }
+      end
+
       production_asg = @config.production_asg&.yield_self { |name| asg.get(name) }
 
       begin
