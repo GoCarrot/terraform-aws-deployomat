@@ -73,9 +73,6 @@
       ],
       "ResultPath": null,
       "Next": "StartUndeploy"
-    },
-      "Resource": "${cancel_lambda_arn}",
-      "End": true
     }
   }
 }
