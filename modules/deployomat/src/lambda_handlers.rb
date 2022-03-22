@@ -75,5 +75,15 @@ module LambdaFunctions
         end
       op.call
     end
+
+    def self.undeploy(event:, context:)
+      args = {
+        account_canonical_slug: event['AccountCanonicalSlug'], service_name: event['ServiceName'],
+        deploy_id: "undeploy-#{event['DeployId']}"
+      }
+      config = Deployomat::Config.new(args)
+      op = Deployomat::Undeploy.new(config, undeploy_config: event.dig('AllInput', 'UndeployConfig'))
+      op.call
+    end
   end
 end

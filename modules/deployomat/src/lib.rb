@@ -194,6 +194,23 @@ module Deployomat
       ).attributes
     end
 
+    def complete_undeploy
+      @config = @cliet.delete_item(
+        table_name: ENV['DEPLOYOMAT_TABLE'],
+        return_values: 'ALL_OLD',
+        key: { 'id' => @primary_key },
+        condition_expression: '(attribute_not_exists(#DEPLOY_ID) OR #DEPLOY_ID = :deploy_id) AND (attribute_not_exists(#UNDEPLOY_STATE) OR #UNDEPLOY_STATE = :undeploying)',
+        expression_attribute_names: {
+          '#DEPLOY_ID' => 'deploy_id',
+          '#UNDEPLOY_STATE' => 'undeploy_state'
+        },
+        expression_attribute_names: {
+          ':deploy_id' => @deploy_id,
+          ':undeploying' => UNDEPLOYING
+        }
+      )
+    end
+
     def assert_active
       @config = @client.update_item(
         table_name: ENV['DEPLOYOMAT_TABLE'],
