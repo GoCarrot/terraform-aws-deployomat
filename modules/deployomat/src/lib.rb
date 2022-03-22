@@ -80,7 +80,8 @@ module Deployomat
     ALLOW = 'allow'
 
     attr_reader :account_canonical_slug, :account_name, :service_name, :prefix,
-                :deploy_id, :params, :organization_prefix, :account_environment
+                :deploy_id, :params, :organization_prefix, :account_environment,
+                :primary_key
 
     def initialize(account_canonical_slug:, service_name:, deploy_id:)
       @client = Aws::DynamoDB::Client.new
@@ -269,6 +270,37 @@ module Deployomat
       ).launch_template_version
     end
   end
+
+  class Events
+    def initialize(config)
+      @config = config
+      @client = Aws::EventBridge::Client.new
+    end
+
+    def schedule_undeploy(time)
+      cron_expression = "cron(#{time.min} #{time.hour} #{time.day} #{time.month} ? *)"
+      @client.put_rule(
+        name: rule_name,
+        schedule_expression: cron_expression,
+        state: 'ENABLED',
+        description: ''
+      )
+    end
+
+    def disable_automatic_undeploy
+      begin
+        @client.delete_rule(name: rule_name)
+      rescue Aws::EventBridge::Errors::ResourceNotFoundException
+        # This is fine, just means we've never scheduled an automatic undeploy.
+      end
+    end
+
+  private
+    def rule_name
+      @rule_name ||= "#{@config.primary_key}-automatic-undeploy"
+    end
+  end
+
 
   class Asg
     REMOVE_HOOK_PARAMS = %i[global_timeout auto_scaling_group_name].freeze

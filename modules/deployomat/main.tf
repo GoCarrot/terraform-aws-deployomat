@@ -13,6 +13,8 @@
 # limitations under the License.
 
 terraform {
+  required_version = ">= 1.1"
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -137,6 +139,73 @@ data "aws_iam_policy_document" "deployomat-lambda" {
       "${aws_dynamodb_table.state.arn}/*"
     ]
   }
+
+  statement {
+    actions = [
+      "events:PutRule",
+      "events:TagResources"
+    ]
+
+    resources = ["*:rule/*/*-automatic-undeploy"]
+
+    condition {
+      test = "StringEquals"
+      variable = "aws:RequestTag/Environment"
+      values = ["&{aws:PrincipalTag/Environment}"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Managed"
+      values   = [local.service]
+    }
+  }
+
+  statement {
+    actions = [
+      "events:DeleteRule"
+    ]
+
+    resources = ["*:rule/*/*-automatic-undeploy"]
+
+    condition {
+      test = "StringEquals"
+      variable = "aws:ResourceTag/Environment"
+      values = ["&{aws:PrincipalTag/Environment}"]
+    }
+
+    condition {
+      test = "StringEquals"
+      variable = "aws:ResourceTag/Managed"
+      values = [local.service]
+    }
+  }
+
+  statement {
+    actions = [
+      "events:PutTargets"
+    ]
+
+    resources = ["*:rule/*/*-automatic-undeploy"]
+
+    condition {
+      test = "StringEquals"
+      variable = "aws:ResourceTag/Environment"
+      values = ["&{aws:PrincipalTag/Environment}"]
+    }
+
+    condition {
+      test = "StringEquals"
+      variable = "aws:ResourceTag/Managed"
+      values = [local.service]
+    }
+
+    condition {
+      test = "ArnEquals"
+      variable = "events:TargetArn"
+      values = [aws_sfn_state_machine.undeploy.arn]
+    }
+  }
 }
 
 resource "aws_iam_policy" "deployomat-lambda" {
@@ -168,11 +237,24 @@ resource "aws_iam_role" "deployomat" {
   tags = local.tags
 }
 
-resource "aws_iam_role_policy_attachment" "deployomat" {
-  for_each = { deploy = aws_iam_policy.deployomat-lambda, logging = aws_iam_policy.deployomat-lambda-logging }
+moved {
+  from = aws_iam_role_policy_attachment.deployomat["logging"]
+  to = aws_iam_role_policy_attachment.deployomat-logging
+}
 
+moved {
+  from = aws_iam_role_policy_attachment.deployomat["deploy"]
+  to = aws_iam_role_policy_attachment.deployomat-deploy
+}
+
+resource "aws_iam_role_policy_attachment" "deployomat-logging" {
   role       = aws_iam_role.deployomat.name
-  policy_arn = each.value.arn
+  policy_arn = aws_iam_policy.deployomat-lambda-logging.arn
+}
+
+resource "aws_iam_role_policy_attachment" "deployomat-deploy" {
+  role       = aws_iam_role.deployomat.name
+  policy_arn = aws_iam_policy.deployomat-lambda.arn
 }
 
 resource "aws_cloudwatch_log_group" "lambda" {
@@ -215,7 +297,7 @@ resource "aws_lambda_function" "deployomat-cancel" {
   tags = local.tags
 
   depends_on = [
-    aws_iam_role_policy_attachment.deployomat,
+    aws_iam_role_policy_attachment.deployomat-logging,
     aws_cloudwatch_log_group.lambda
   ]
 }
@@ -245,7 +327,7 @@ resource "aws_lambda_function" "deployomat-deploy" {
   tags = local.tags
 
   depends_on = [
-    aws_iam_role_policy_attachment.deployomat,
+    aws_iam_role_policy_attachment.deployomat-logging,
     aws_cloudwatch_log_group.lambda
   ]
 }
@@ -275,7 +357,7 @@ resource "aws_lambda_function" "deployomat-undeploy" {
   tags = local.tags
 
   depends_on = [
-    aws_iam_role_policy_attachment.deployomat,
+    aws_iam_role_policy_attachment.deployomat-logging,
     aws_cloudwatch_log_group.lambda
   ]
 }

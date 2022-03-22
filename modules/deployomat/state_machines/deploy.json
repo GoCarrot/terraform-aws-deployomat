@@ -382,6 +382,7 @@
         "ServiceName.$": "$.ServiceName",
         "DeployId.$": "$$.Execution.Name",
         "AllowUndeploy.$": "$.StartDeploy.AllowUndeploy",
+        "AutomaticUndeploySeconds.$": "$.StartDeploy.AutomaticUndeploySeconds",
         "Step": "Finish"
       },
       "Resource": "${deploy_lambda_arn}",

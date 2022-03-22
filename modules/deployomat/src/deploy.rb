@@ -29,7 +29,7 @@ module Deployomat
     def_delegators :@config, :account_name, :service_name, :prefix, :deploy_id, :params
 
     attr_reader :ami_id, :new_asg_name, :bake_time, :health_timeout,
-                :traffic_shift_per_step, :wait_per_step, :allow_undeploy
+                :traffic_shift_per_step, :wait_per_step, :allow_undeploy, :automatic_undeploy_seconds
 
     GREATER_THAN_ZERO = %i[bake_time traffic_shift_per_step wait_per_step health_timeout].freeze
 
@@ -46,6 +46,7 @@ module Deployomat
       @health_timeout = deploy_config.fetch('HealthTimeout', DEFAULT_HEALTH_TIMEOUT)
       @on_concurrent_deploy = deploy_config.fetch('OnConcurrentDeploy', DEFAULT_ON_CONCURRENT_DEPLOY)
       @allow_undeploy = deploy_config.fetch('AllowUndeploy', @config.account_environment != 'production')
+      @automatic_undeploy_seconds = deploy_config.fetch('AutomaticUndeploySeconds', nil)
       @errors = []
     end
 
@@ -58,6 +59,10 @@ module Deployomat
         if send(check_attr) < 0
           error "#{check_attr} must be greater than zero"
         end
+      end
+
+      if @automatic_undeploy_seconds && !@allow_undeploy
+        error "Cannot request an automatic undeploy without allowing undeploy"
       end
 
       asg = Asg.new(@config)
@@ -143,7 +148,8 @@ module Deployomat
         if production_rules.all? { |rule| rule.first == :initial }
           return {
             Status: :success, WaitForBakeTime: bake_time, RuleIds: production_rules.map { |pr| pr[1].rule_arn },
-            NewTargetGroupArn: new_target_group_arn, AllowUndeploy: allow_undeploy
+            NewTargetGroupArn: new_target_group_arn, AllowUndeploy: allow_undeploy,
+            AutomaticUndeploySeconds: @automatic_undeploy_seconds
           }
         end
 
@@ -156,11 +162,13 @@ module Deployomat
           Status: :wait_healthy, WaitForHealthyTime: health_timeout, NewTargetGroupArn: new_target_group_arn,
           OldTargetGroupArn: production_tg_arn, MinHealthy: requested_min, TrafficShiftPerStep: traffic_shift_per_step,
           WaitPerStep: wait_per_step, RuleIds: production_rules, WaitForBakeTime: bake_time,
-          AllowUndeploy: allow_undeploy
+          AllowUndeploy: allow_undeploy, AutomaticUndeploySeconds: @automatic_undeploy_seconds
         }
       else
-        return { Status: :success, WaitForBakeTime: bake_time, RuleIds: '',
-                 NewTargetGroupArn: '', AllowUndeploy: allow_undeploy }
+        return {
+          Status: :success, WaitForBakeTime: bake_time, RuleIds: '', NewTargetGroupArn: '',
+          AllowUndeploy: allow_undeploy, AutomaticUndeploySeconds: @automatic_undeploy_seconds
+        }
       end
     end
 
@@ -327,9 +335,10 @@ module Deployomat
 
     attr_reader :allow_undeploy
 
-    def initialize(config, allow_undeploy:)
+    def initialize(config, allow_undeploy:, automatic_undeploy_seconds:)
       @config = config
       @allow_undeploy = allow_undeploy
+      @automatic_undeploy_seconds = automatic_undeploy_seconds
     end
 
     def call
@@ -370,6 +379,15 @@ module Deployomat
           puts "Destroying previous target group #{production_tg_arn}"
           elbv2.destroy_tg(production_tg_arn)
         end
+      end
+
+      events = Events.new(@config)
+      if automatic_undeploy_seconds
+        time = Time.now.utc + automatic_undeploy_seconds
+        puts "Scheduling automatic undeploy for #{time}"
+        events.schedule_undeploy(time)
+      else
+        events.disable_automatic_undeploy
       end
 
       puts "Deploy complete."
