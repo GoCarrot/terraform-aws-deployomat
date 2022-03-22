@@ -204,7 +204,7 @@ module Deployomat
           '#DEPLOY_ID' => 'deploy_id',
           '#UNDEPLOY_STATE' => 'undeploy_state'
         },
-        expression_attribute_names: {
+        expression_attribute_values: {
           ':deploy_id' => @deploy_id,
           ':undeploying' => UNDEPLOYING
         }
