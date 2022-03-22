@@ -39,7 +39,7 @@ module Deployomat
       end
 
       deploy_asg_name = @config.deploy_asg
-      if deploy_asg_name? && !deploy_asg_name.empty?
+      if deploy_asg_name && !deploy_asg_name.empty?
         puts "Deployment of #{service_name} in #{account_name} still in progress"
         return { Status: :deploy_active, OnConcurrentDeploy: @on_concurrent_deploy }
       end
