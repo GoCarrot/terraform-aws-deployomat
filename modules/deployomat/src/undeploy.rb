@@ -32,6 +32,12 @@ module Deployomat
     end
 
     def call
+      production_asg_name = @config.production_asg
+      if production_asg_name.nil? || production_asg_name.empty?
+        puts "No production ASG of #{service_name} in #{account_name} to undeploy, not deployed?"
+        return { Status: :success }
+      end
+
       if !(@config.undeploying? || @config.undeployable?)
         error = "#{service_name} in #{account_name} cannot be undeployed. Do a new deploy with DeployConfig.AllowUndeploy set to true first."
         puts error
@@ -42,12 +48,6 @@ module Deployomat
       if deploy_asg_name && !deploy_asg_name.empty?
         puts "Deployment of #{service_name} in #{account_name} still in progress"
         return { Status: :deploy_active, OnConcurrentDeploy: @on_concurrent_deploy }
-      end
-
-      production_asg_name = @config.production_asg
-      if production_asg_name.nil? || production_asg_name.empty?
-        puts "No production ASG of #{service_name} in #{account_name} to undeploy, not deployed?"
-        return { Status: :success }
       end
 
       puts "Asserting start of undeploy"
