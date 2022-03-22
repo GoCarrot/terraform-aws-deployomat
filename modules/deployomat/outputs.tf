@@ -22,6 +22,11 @@ output "cancel_sfn" {
   value       = aws_sfn_state_machine.cancel-deploy
 }
 
+output "undeploy_sfn" {
+  description = "The AWS Step Function created to undeploy services."
+  value       = aws_sfn_state_machine.undeploy
+}
+
 output "cloudwatch_log_group_arns" {
   description = "The log group arns for all log groups the deployomat may log to."
   value       = concat(values(aws_cloudwatch_log_group.lambda)[*].arn, [aws_cloudwatch_log_group.sfn.arn])
