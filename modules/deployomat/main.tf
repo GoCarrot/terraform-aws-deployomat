@@ -366,7 +366,8 @@ data "aws_iam_policy_document" "deployomat-sfn" {
 
     resources = [
       aws_lambda_function.deployomat-cancel.arn,
-      aws_lambda_function.deployomat-deploy.arn
+      aws_lambda_function.deployomat-deploy.arn,
+      aws_lambda_function.deployomat-undeploy.arn
     ]
   }
 
