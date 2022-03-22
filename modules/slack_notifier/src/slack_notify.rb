@@ -33,25 +33,25 @@ module SlackNotify
     status = detail['status']
     deployment_desc = "#{input['ServiceName']} to #{input['AccountCanonicalSlug']} (AMI <https://console.aws.amazon.com/ec2/v2/home?region=#{ENV['AWS_REGION']}#ImageDetails:imageId=#{input['AmiId']}|#{input['AmiId']}>, Execution <https://console.aws.amazon.com/states/home?region=#{ENV['AWS_REGION']}#/executions/details/#{detail['executionArn']}|#{detail['name']}>)"
     if status == 'RUNNING'
-      return nil if skip_notifications
-      "Started deployment of #{deployment_desc}"
+      return { text: nil } if skip_notifications
+      { text: "Started deployment of #{deployment_desc}" }
     elsif status == 'SUCCEEDED'
       output = JSON.parse(detail['output'])
       out_status = output['Status']
       if out_status == 'complete'
-        return nil if skip_notifications
-        "Completed deployment of #{deployment_desc}"
+        return { text: nil } if skip_notifications
+        { text: "Completed deployment of #{deployment_desc}" }
       elsif out_status == 'deploy_aborted'
-        "Aborted deployment of #{deployment_desc}"
+        { text: "Aborted deployment of #{deployment_desc}" }
       elsif out_status == 'fail'
-        "Failed deployment of #{deployment_desc}\n\n#{output['Error'].join("\n")}"
+        { text: "Failed deployment of #{deployment_desc}\n\n#{output['Error'].join("\n")}" }
       else
-        "Unknown success result for #{deployment_desc}: #{out_status}"
+        { text: "Unknown success result for #{deployment_desc}: #{out_status}" }
       end
     elsif status == 'FAILED'
-      "Failed deployment of #{deployment_desc}"
+      { text: "Failed deployment of #{deployment_desc}" }
     else
-      "#{status}: deployment of #{deployment_desc} -- LIKELY IN AN INCONSISTENT STATE!!!"
+      { text: "#{status}: deployment of #{deployment_desc} -- LIKELY IN AN INCONSISTENT STATE!!!" }
     end
   end
 
@@ -60,23 +60,28 @@ module SlackNotify
     input = JSON.parse(detail['input'])
 
     status = detail['status']
-    deployment_desc = "#{input['ServiceName']} from #{input['AccountCanonicalSlug']}"
+    deployment_desc = "#{input['ServiceName']} from #{input['AccountCanonicalSlug']} (Execution <https://console.aws.amazon.com/states/home?region=#{ENV['AWS_REGION']}#/executions/details/#{detail['executionArn']}|#{detail['name']}>)"
     if status == 'RUNNING'
-      "Started undeploy of #{deployment_desc}"
-    elsif sttaus == 'SUCCEEDED'
+      { text: "Started undeploy of #{deployment_desc}" }
+    elsif status == 'SUCCEEDED'
       output = JSON.parse(detail['output'])
       out_status = output['Status']
       if out_status == 'complete'
-        "Completed undeployment of #{deployment_desc}"
+        text = "Completed undeployment of #{deployment_desc}"
+        if ENV['UNDEPLOY_TECHNO'] == 'true'
+          { text: text, blocks: [{type: "section", text: { type: "mrkdwn", text: "<https://www.youtube.com/watch?v=Z1TlbLfaJp8>"}}]}
+        else
+          { text: text }
+        end
       elsif out_status == 'fail'
-        "Failed undeployment of #{deployment_desc}\n\n#{output['Error'].join("\n")}"
+        { text: "Failed undeployment of #{deployment_desc}\n\n#{output['Error'].join("\n")}" }
       else
-        "Unknown success result for #{deployment_desc}: #{out_status}"
+        { text: "Unknown success result for undeployment of #{deployment_desc}: #{out_status}" }
       end
     elsif status == 'FAILED'
-      "Failed undeployment of #{deployment_desc}"
+      { text: "Failed undeployment of #{deployment_desc}" }
     else
-      "#{status}: undeployment of #{deployment_desc} -- LIKELY IN AN INCONSISTENT STATE"
+      { text: "#{status}: undeployment of #{deployment_desc} -- LIKELY IN AN INCONSISTENT STATE" }
     end
   end
 
@@ -102,9 +107,9 @@ module SlackNotify
     }
     sfn_arn = event.dig('detail', 'stateMachineArn')
     if sfn_arn == ENV['DEPLOY_SFN_ARN']
-      request[:text] = notification_for_event(event)
+      request.merge!(notification_for_event(event))
     elsif sfn_arn == ENV['UNDEPLOY_SFN_ARN']
-      request[:text] = notification_for_undeploy(event)
+      request.merge!(notification_for_undeploy(event))
     else
       puts event
       return "Unknown state function trigger #{sfn_arn}"

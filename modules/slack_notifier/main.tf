@@ -127,6 +127,7 @@ resource "aws_lambda_function" "deployomat-slack-notify" {
       SLACK_BOT_TOKEN = var.slack_bot_token
       DEPLOY_SFN_ARN  = var.deploy_sfn.arn
       UNDEPLOY_SFN_ARN = var.undeploy_sfn.arn
+      UNDEPLOY_TECHNO  = var.techno ? "true" : "false"
     }
   }
 

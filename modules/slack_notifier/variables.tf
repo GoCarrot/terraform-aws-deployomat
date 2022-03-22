@@ -74,3 +74,9 @@ variable "tags" {
   description = "Tags to apply to all resources. Will be deduplicated from default tags."
   default     = {}
 }
+
+variable "techno" {
+  type        = bool
+  description = "Play some hot techno beats on undeployment."
+  default     = false
+}
