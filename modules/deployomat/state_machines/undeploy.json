@@ -20,7 +20,7 @@
         {
           "Variable": "$.StartResult.Status",
           "StringEquals": "fail",
-          "Next": "Fail"
+          "Next": "KnownError"
         },
         {
           "Variable": "$.StartResult.Status",
@@ -35,6 +35,14 @@
       ],
       "Default": "Fail"
     },
+    "KnownError": {
+      "Type": "Pass",
+      "End": true,
+      "Parameters": {
+        "Status": "fail",
+        "Error.$": "$.Error"
+      }
+    },
     "Fail": {
       "Type": "Fail"
     },
@@ -47,10 +55,20 @@
         {
           "Variable": "$.StartResult.OnConcurrentDeploy",
           "StringEquals": "fail",
-          "Next": "Fail"
+          "Next": "FailConcurrentDeploy"
         }
       ],
       "Default": "CancelConcurrentDeploy"
+    },
+    "FailConcurrentDeploy": {
+      "Type": "Pass",
+      "End": true,
+      "Parameters": {
+        "Status": "fail",
+        "Error": [
+          "A deploy is running concurrently, and this undeploy was configured to fail in such a case."
+        ]
+      }
     },
     "CancelConcurrentDeploy": {
       "Type": "Task",

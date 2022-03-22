@@ -41,7 +41,7 @@ module Deployomat
       if !(@config.undeploying? || @config.undeployable?)
         error = "#{service_name} in #{account_name} cannot be undeployed. Do a new deploy with DeployConfig.AllowUndeploy set to true first."
         puts error
-        return { Status: :fail, error: error }
+        return { Status: :fail, Error: [error] }
       end
 
       deploy_asg_name = @config.deploy_asg
