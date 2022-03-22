@@ -1,4 +1,4 @@
-u# frozen_string_literal: true
+# frozen_string_literal: true
 
 # Copyright 2021 Teak.io, Inc.
 #
