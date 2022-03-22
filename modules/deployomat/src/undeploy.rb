@@ -35,7 +35,7 @@ module Deployomat
       production_asg_name = @config.production_asg
       if production_asg_name.nil? || production_asg_name.empty?
         puts "No production ASG of #{service_name} in #{account_name} to undeploy, not deployed?"
-        return { Status: :success }
+        return { Status: :complete }
       end
 
       if !(@config.undeploying? || @config.undeployable?)
@@ -90,7 +90,7 @@ module Deployomat
 
       @config.complete_undeploy
 
-      return { Status: :success }
+      return { Status: :complete }
     end
   end
 end

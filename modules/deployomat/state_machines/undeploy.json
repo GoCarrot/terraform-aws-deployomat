@@ -29,7 +29,7 @@
         },
         {
           "Variable": "$.StartResult.Status",
-          "StringEquals": "success",
+          "StringEquals": "complete",
           "Next": "Success"
         }
       ],
@@ -47,7 +47,11 @@
       "Type": "Fail"
     },
     "Success": {
-      "Type": "Succeed"
+      "Type": "Pass",
+      "End": true,
+      "Parameters": {
+        "Status": "complete"
+      }
     },
     "HandleConcurrentDeploy": {
       "Type": "Choice",
