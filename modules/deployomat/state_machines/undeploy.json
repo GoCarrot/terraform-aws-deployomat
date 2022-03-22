@@ -1,0 +1,81 @@
+{
+  "Comment": "Undeploy a running service. Required inputs are AccountCanonicalSlug and ServiceName (to undeploy/destroy ServiceName in AccountCanonicalSlug)",
+  "StartAt": "StartUndeploy",
+  "States": {
+    "StartUndeploy": {
+      "Type": "Task",
+      "Parameters": {
+        "AccountCanonicalSlug.$": "$.AccountCanonicalSlug",
+        "ServiceName.$": "$.ServiceName",
+        "DeployId.$": "$$.Execution.Name",
+        "AllInput.$": "$",
+      },
+      "ResultPath": "$.StartResult",
+      "Resource": "${undeploy_lambda_arn}",
+      "Next": "StartBranch"
+    },
+    "StartBranch": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.StartResult.Status",
+          "StringEquals": "fail",
+          "Next": "Fail"
+        },
+        {
+          "Variable": "$.StartResult.Status",
+          "StringEquals": "deploy_active",
+          "Next": "HandleConcurrentDeploy"
+        },
+        {
+          "Variable": "$.StartResult",
+          "StringEquals": "success",
+          "Next": "Success"
+        }
+      ],
+      "Default": "Fail"
+    },
+    "Fail": {
+      "Type": "Fail"
+    },
+    "Success": {
+      "Type": "Succeed"
+    },
+    "HandleConcurrentDeploy": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.StartResult.OnConcurrentDeploy",
+          "StringEquals": "fail",
+          "Next": "Fail"
+        }
+      ],
+      "Default": "CancelConcurrentDeploy"
+    },
+    "CancelConcurrentDeploy": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Parameters": {
+        "StateMachineArn": "${cancel_deploy_state_machine_arn}",
+        "Input": {
+          "AccountCanonicalSlug.$": "$.AccountCanonicalSlug",
+          "ServiceName.$": "$.ServiceName",
+          "Comment.$": "States.Format('Cancelling concurrent deploy of {} in {}', $.ServiceName, $.AccountCanonicalSlug)",
+          "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id"
+        }
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "StepFunctions.ExecutionLimitExceeded"
+          ]
+        }
+      ],
+      "ResultPath": null,
+      "Next": "StartUndeploy"
+    },
+      "Resource": "${cancel_lambda_arn}",
+      "End": true
+    }
+  }
+}

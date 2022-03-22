@@ -176,7 +176,7 @@ resource "aws_iam_role_policy_attachment" "deployomat" {
 }
 
 resource "aws_cloudwatch_log_group" "lambda" {
-  for_each = toset(["DeployomatCancel", "DeployomatDeploy"])
+  for_each = toset(["DeployomatCancel", "DeployomatDeploy", "DeployomatUndeploy"])
 
   name              = "/aws/lambda/${each.key}"
   retention_in_days = var.log_retention_in_days
@@ -229,6 +229,36 @@ resource "aws_lambda_function" "deployomat-deploy" {
   filename         = data.archive_file.deployomat.output_path
   source_code_hash = filebase64sha256(data.archive_file.deployomat.output_path)
   handler          = "lambda_handlers.LambdaFunctions::Handler.deploy"
+  publish          = true
+
+  timeout = 60
+
+  environment {
+    variables = {
+      DEPLOYOMAT_META_ROLE_ARN = var.deployomat_meta_role_arn,
+      DEPLOYOMAT_ENV           = local.environment,
+      DEPLOYOMAT_TABLE         = aws_dynamodb_table.state.name
+      DEPLOYOMAT_SERVICE_NAME  = local.service
+    }
+  }
+
+  tags = local.tags
+
+  depends_on = [
+    aws_iam_role_policy_attachment.deployomat,
+    aws_cloudwatch_log_group.lambda
+  ]
+}
+
+resource "aws_lambda_function" "deployomat-undeploy" {
+  function_name    = "DeployomatDeploy"
+  role             = aws_iam_role.deployomat.arn
+  architectures    = ["arm64"]
+  memory_size      = 512
+  runtime          = "ruby2.7"
+  filename         = data.archive_file.deployomat.output_path
+  source_code_hash = filebase64sha256(data.archive_file.deployomat.output_path)
+  handler          = "lambda_handlers.LambdaFunctions::Handler.undeploy"
   publish          = true
 
   timeout = 60
@@ -453,6 +483,30 @@ resource "aws_sfn_state_machine" "deploy" {
     {
       deploy_lambda_arn                 = aws_lambda_function.deployomat-deploy.arn,
       loop_wait_state_state_machine_arn = aws_sfn_state_machine.loop-wait-state.arn,
+      cancel_deploy_state_machine_arn   = aws_sfn_state_machine.cancel-deploy.arn
+    }
+  )
+
+  logging_configuration {
+    log_destination        = "${aws_cloudwatch_log_group.sfn.arn}:*"
+    include_execution_data = true
+    level                  = "ALL"
+  }
+
+  tags = local.tags
+
+  depends_on = [
+    aws_cloudwatch_log_resource_policy.deployomat-logging
+  ]
+}
+
+resource "aws_sfn_state_machine" "undeploy" {
+  name     = "Deployomat-Uneploy"
+  role_arn = aws_iam_role.deployomat-sfn.arn
+  definition = templatefile(
+    "${path.module}/state_machines/undeploy.json",
+    {
+      undeploy_lambda_arn                 = aws_lambda_function.deployomat-undeploy.arn,
       cancel_deploy_state_machine_arn   = aws_sfn_state_machine.cancel-deploy.arn
     }
   )
