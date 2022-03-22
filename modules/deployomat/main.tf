@@ -251,7 +251,7 @@ resource "aws_lambda_function" "deployomat-deploy" {
 }
 
 resource "aws_lambda_function" "deployomat-undeploy" {
-  function_name    = "DeployomatDeploy"
+  function_name    = "DeployomatUndeploy"
   role             = aws_iam_role.deployomat.arn
   architectures    = ["arm64"]
   memory_size      = 512
