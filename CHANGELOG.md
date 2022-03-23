@@ -1,3 +1,9 @@
+## 0.2.2
+
+BUG FIXES:
+
+* Fix deployment failure when there is no existing automatic undeploy. ABAC is hard y'all
+
 ## 0.2.1
 
 BUG FIXES:
