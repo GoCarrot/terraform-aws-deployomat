@@ -146,7 +146,7 @@ data "aws_iam_policy_document" "deployomat-lambda" {
       "events:TagResources"
     ]
 
-    resources = ["*:rule/*/*-automatic-undeploy"]
+    resources = ["arn:${data.aws_partition.current.partition}:events:*:*:rule/*/*-automatic-undeploy"]
 
     condition {
       test = "StringEquals"
@@ -166,7 +166,7 @@ data "aws_iam_policy_document" "deployomat-lambda" {
       "events:DeleteRule"
     ]
 
-    resources = ["*:rule/*/*-automatic-undeploy"]
+    resources = ["arn:${data.aws_partition.current.partition}:events:*:*:rule/*/*-automatic-undeploy"]
 
     condition {
       test = "StringEquals"
@@ -186,7 +186,7 @@ data "aws_iam_policy_document" "deployomat-lambda" {
       "events:PutTargets"
     ]
 
-    resources = ["*:rule/*/*-automatic-undeploy"]
+    resources = ["arn:${data.aws_partition.current.partition}:events:*:*:rule/*/*-automatic-undeploy"]
 
     condition {
       test = "StringEquals"
