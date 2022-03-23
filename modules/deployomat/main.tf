@@ -81,7 +81,7 @@ resource "aws_iam_policy" "deployomat-lambda-logging" {
 }
 
 locals {
-  automatic_undeploy_rule_arn = "arn:${data.aws_partition.current.partition}:events:*:*:rule/*-automatic-undeploy"
+  automatic_undeploy_rule_arn = "arn:${data.aws_partition.current.partition}:events:*:${data.aws_caller_identity.current.account_id}:rule/*-automatic-undeploy"
 }
 
 data "aws_iam_policy_document" "deployomat-lambda" {
@@ -226,7 +226,7 @@ data "aws_iam_policy_document" "deployomat-lambda" {
     condition {
       test     = "ArnLike"
       variable = "iam:AssociatedResourceArn"
-      values   = ["arn:${data.aws_partition.current.partition}:events:*:*:rule/*-automatic-undeploy"]
+      values   = [local.automatic_undeploy_rule_arn]
     }
 
     condition {
