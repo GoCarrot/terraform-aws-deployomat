@@ -18,6 +18,7 @@ require 'aws-sdk-autoscaling'
 require 'aws-sdk-dynamodb'
 require 'aws-sdk-ec2'
 require 'aws-sdk-elasticloadbalancingv2'
+require 'aws-sdk-eventbridge'
 require 'aws-sdk-ssm'
 
 require 'json'
@@ -32,7 +33,7 @@ module Deployomat
       @meta_role_credentials[deploy_id] ||= begin
         Aws::AssumeRoleCredentials.new(
           role_arn: ENV['DEPLOYOMAT_META_ROLE_ARN'],
-          role_session_name: deploy_id,
+          role_session_name: deploy_id[0...64],
           tags: [
             {
               key: 'Environment',
@@ -52,7 +53,7 @@ module Deployomat
       our_role_creds[deploy_id] ||= begin
         Aws::AssumeRoleCredentials.new(
           role_arn: role_arn,
-          role_session_name: deploy_id
+          role_session_name: deploy_id[0...64]
         )
       end
     end
@@ -272,23 +273,67 @@ module Deployomat
   end
 
   class Events
+    TARGET_NAME = 'RunUndeploy'
+
     def initialize(config)
       @config = config
       @client = Aws::EventBridge::Client.new
     end
 
     def schedule_undeploy(time)
-      cron_expression = "cron(#{time.min} #{time.hour} #{time.day} #{time.month} ? *)"
-      @client.put_rule(
+      cron_expression = "cron(#{time.min} #{time.hour} #{time.day} #{time.month} ? #{time.year})"
+      undeploy_desc = "automatic undeploy of #{@config.service_name} in #{@config.account_canonical_slug}"
+      rule = @client.put_rule(
         name: rule_name,
         schedule_expression: cron_expression,
         state: 'ENABLED',
-        description: ''
+        description: "Trigger for #{undeploy_desc}",
+        tags: [
+          {
+            key: 'Environment',
+            value: ENV['DEPLOYOMAT_ENV']
+          },
+          {
+            key: 'Managed',
+            value: MANAGED_TAG
+          },
+          {
+            key: 'CostCenter',
+            value: MANAGED_TAG
+          },
+          {
+            key: 'Service',
+            value: @config.service_name
+          }
+        ]
+      )
+
+      @client.put_targets(
+        rule: rule_name,
+        targets: [
+          {
+            id: TARGET_NAME,
+            arn: ENV['UNDEPLOY_SFN_ARN'],
+            role_arn: ENV['UNDEPLOYER_ROLE_ARN'],
+            input: JSON.generate({
+              Comment: undeploy_desc,
+              ServiceName: @config.service_name,
+              AccountCanonicalSlug: @config.account_canonical_slug,
+              UndeployConfig: {
+                OnConcurrentDeploy: 'fail'
+              }
+            })
+          }
+        ]
       )
     end
 
     def disable_automatic_undeploy
       begin
+        @client.remove_targets(
+          rule: rule_name,
+          ids: [TARGET_NAME]
+        )
         @client.delete_rule(name: rule_name)
       rescue Aws::EventBridge::Errors::ResourceNotFoundException
         # This is fine, just means we've never scheduled an automatic undeploy.

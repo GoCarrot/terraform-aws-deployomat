@@ -89,6 +89,8 @@ module Deployomat
       end
 
       @config.complete_undeploy
+      events = Events.new(@config)
+      events.disable_automatic_undeploy
 
       return { Status: :complete }
     end

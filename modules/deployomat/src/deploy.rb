@@ -333,7 +333,7 @@ module Deployomat
 
     def_delegators :@config, :account_name, :service_name, :prefix, :deploy_id, :params
 
-    attr_reader :allow_undeploy
+    attr_reader :allow_undeploy, :automatic_undeploy_seconds
 
     def initialize(config, allow_undeploy:, automatic_undeploy_seconds:)
       @config = config
