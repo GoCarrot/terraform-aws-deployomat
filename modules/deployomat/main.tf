@@ -218,6 +218,14 @@ data "aws_iam_policy_document" "deployomat-lambda" {
 
   statement {
     actions = [
+      "events:DescribeRule"
+    ]
+
+    resources = [local.automatic_undeploy_rule_arn]
+  }
+
+  statement {
+    actions = [
       "iam:PassRole"
     ]
 

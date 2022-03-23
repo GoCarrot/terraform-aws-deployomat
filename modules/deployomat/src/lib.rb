@@ -330,16 +330,12 @@ module Deployomat
 
     def disable_automatic_undeploy
       begin
-        @client.delete_rule(name: rule_name)
-      rescue Aws::EventBridge::Errors::ValidationException
-        # Rule can't be deleted since it has targets.
-        # But we don't want to blindly remove_targets, because if there is no
-        # rule then the ABAC for trying to remove targets will fail.
+        @client.describe_rule(name: rule_name)
         @client.remove_targets(
           rule: rule_name,
           ids: [TARGET_NAME]
         )
-        retry
+        @client.delete_rule(name: rule_name)
       rescue Aws::EventBridge::Errors::ResourceNotFoundException
         # This is fine, just means we've never scheduled an automatic undeploy.
       end
