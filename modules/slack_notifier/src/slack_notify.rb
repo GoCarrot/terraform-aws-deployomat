@@ -69,7 +69,10 @@ module SlackNotify
       if out_status == 'complete'
         text = "Completed undeployment of #{deployment_desc}"
         if ENV['UNDEPLOY_TECHNO'] == 'true'
-          { text: text, blocks: [{type: "section", text: { type: "mrkdwn", text: text }}, {type: "section", text: { type: "mrkdwn", text: "<https://www.youtube.com/watch?v=Z1TlbLfaJp8>"}}]}
+          { text: text, blocks: [
+            {type: "section", text: { type: "mrkdwn", text: text }},
+            {type: "section", text: { type: "mrkdwn", text: "<#{ENV['TECHNO_BEATS']}>"}}
+          ]}
         else
           { text: text }
         end

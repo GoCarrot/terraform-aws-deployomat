@@ -128,6 +128,7 @@ resource "aws_lambda_function" "deployomat-slack-notify" {
       DEPLOY_SFN_ARN  = var.deploy_sfn.arn
       UNDEPLOY_SFN_ARN = var.undeploy_sfn.arn
       UNDEPLOY_TECHNO  = var.techno ? "true" : "false"
+      TECHNO_BEATS     = var.hot_techno_beats
     }
   }
 
