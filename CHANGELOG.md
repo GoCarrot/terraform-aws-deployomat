@@ -1,3 +1,17 @@
+## 0.2.0
+
+BREAKING CHANGES:
+
+* deployer_role now requires an undeploy_sfn_arn input.
+* slack_notifier now requires an undeploy_sfn input.
+
+ENHANCEMENTS:
+
+* Undeploy. Invoking the Undeploy state machine with a service name and account name will destroy _production_ assets of that service in the given account. Because this is potentially dangerous, undeploy requires a service deployment to opt in to undeployment by setting DeployConfig.AllowUndeploy to true on deployment, or by being deployed into an account whose environment is not "production". If DeployConfig.AllowUndeploy is explicitly set to false, services deployed in an account whose environment is not "production" also cannot be undeployed.
+* Automatic Undeployment. Any service that can be undeployed can be deployed with DeployConfig.AutomaticUndeployMinutes set. Deployomat will automatically undeploy the service the specified number of minutes after a successful deploy with such a configuration.
+* Nicely error out on deploy if the template ASG cannot be identified.
+* Provide known errors to the Slack Notifer, which it now provides when a deployment fails for a known resason.
+
 ## 0.1.2
 
 BUG FIXES:
