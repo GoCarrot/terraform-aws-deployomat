@@ -295,11 +295,6 @@ resource "aws_iam_policy" "allow-invoke-undeploy" {
   tags = local.tags
 }
 
-moved {
-  from = aws_iam_role.automatic_undeployer
-  to   = aws_iam_role.automatic-undeployer
-}
-
 resource "aws_iam_role" "automatic-undeployer" {
   name               = "${local.service}-AutomaticUndeployer"
   assume_role_policy = data.aws_iam_policy_document.allow-events-assume.json
