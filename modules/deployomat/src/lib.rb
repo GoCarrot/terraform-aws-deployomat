@@ -507,7 +507,7 @@ module Deployomat
 
       new_tg_conf[:tags] = tags
       @client.create_target_group(
-        new_tg_conf.merge(name: clone_name)
+        new_tg_conf.merge(name: clone_name.gsub(/[^A-Za-z0-9\-]/, '-')[0...32])
       ).target_groups.first
     end
 
