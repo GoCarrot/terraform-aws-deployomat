@@ -44,7 +44,7 @@ locals {
   )
 
   our_tags = merge(var.tags, { Service = local.service, Environment = local.environment })
-  tags     = { for key, value in local.our_tags : key => value if lookup(data.aws_default_tags.tags.tags, key) != value }
+  tags     = { for key, value in local.our_tags : key => value if lookup(data.aws_default_tags.tags.tags, key, null) != value }
 }
 
 resource "aws_dynamodb_table" "state" {
