@@ -30,7 +30,6 @@ terraform {
 
 data "aws_partition" "current" {}
 data "aws_caller_identity" "current" {}
-data "aws_region" "current" {}
 data "aws_default_tags" "tags" {}
 
 locals {
@@ -473,7 +472,7 @@ data "aws_iam_policy_document" "aws-log-delivery" {
     condition {
       test     = "ArnLike"
       variable = "aws:SourceArn"
-      values   = ["arn:${data.aws_partition.current.partition}:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:*"]
+      values   = ["arn:${data.aws_partition.current.partition}:logs:*:${data.aws_caller_identity.current.account_id}:*"]
     }
   }
 }
@@ -532,7 +531,7 @@ data "aws_iam_policy_document" "deployomat-sfn" {
       "states:StartExecution"
     ]
 
-    resources = ["arn:${data.aws_partition.current.partition}:states:${data.aws_region.current.name}:${data.aws_caller_identity.current.id}:stateMachine:*"]
+    resources = ["arn:${data.aws_partition.current.partition}:states:*:${data.aws_caller_identity.current.id}:stateMachine:*"]
 
     condition {
       test     = "StringEquals"
@@ -558,7 +557,7 @@ data "aws_iam_policy_document" "deployomat-sfn" {
     ]
 
     resources = [
-      "arn:${data.aws_partition.current.partition}:events:${data.aws_region.current.name}:${data.aws_caller_identity.current.id}:rule/StepFunctionsGetEventsForStepFunctionsExecutionRule"
+      "arn:${data.aws_partition.current.partition}:events:*:${data.aws_caller_identity.current.id}:rule/StepFunctionsGetEventsForStepFunctionsExecutionRule"
     ]
   }
 }
