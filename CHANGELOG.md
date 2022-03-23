@@ -1,3 +1,14 @@
+## 0.2.1
+
+BUG FIXES:
+
+* Fix error when provisioning deploy_access_role if Service is not a default tag on the provider or var.tags includes a tag that is not a default tag on the provider.
+* Fix error when provisioning meta_access_role if Service is not a default tag on the provider or var.tags includes a tag that is not a default tag on the provider.
+* Fix error when provisioning deployer_role if var.tags includes a tag that is not a default tag on the provider.
+* Fix error when provisioning slack_notifier if var.tags includes a tag that is not a default tag on the provider.
+* Fix error when provisioning deployomat if Service or Environment is not a default tag on the provider or var.tags includes a tag that is not a default tag on the provider.
+* Fix deployment failure when there is no existing automatic undeploy.
+
 ## 0.2.0
 
 BREAKING CHANGES:
