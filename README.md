@@ -392,7 +392,7 @@ Additional deploy options may be configured under a `DeployConfig` in the input.
 - `DeployConfig.OnConcurrentDeploy` controls how Deployomat will behave if a deploy of a service in an account is started while another deploy of the same service in the same account is active. Valid values are
   - `fail` Deployomat will abort the current deploy if another is active
   - `rollback` This is the default. Deployomat will first initiate a rollback of the current deploy before proceeding with the newly requested deploy.
-- `DeployConfig.AllowUndeploy` controls if the deployed service may be undeployed. If left unspecified, this will default to true unless Deploymat was deployed with `environment = "production"`
+- `DeployConfig.AllowUndeploy` controls if the deployed service may be undeployed. If left unspecified, this will default to true unless the environment configured for the account is "production".
 - `DeployConfig.AutomaticUndeployMinutes` enables automatic undeployment of the service. Once the given number of minutes elapses after a successful deployment Deployomat will automatically undeploy the service. It is an error to provide this configuration if the service cannot be undeployed.
 
 A deploy may be cancelled by starting an execution of `cancel_sfn.arn`. The input is a JSON document containning AccountCanonicalSlug and ServiceName keys. For example, using the aws cli, `aws stepfunctions start-execution --start-machine-arn <CANCEL_SFN_ARN> --input '{"AccountCanonicalSlug":"workload-dev-0001", "ServiceName": "example"}'`
