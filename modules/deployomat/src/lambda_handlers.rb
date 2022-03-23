@@ -71,7 +71,7 @@ module LambdaFunctions
           )
         when 'Finish'
           Deployomat::FinishDeploy.new(
-            config, allow_undeploy: event['AllowUndeploy'], automatic_undeploy_seconds: event['AutomaticUndeploySeconds']
+            config, allow_undeploy: event['AllowUndeploy'], automatic_undeploy_minutes: event['AutomaticUndeployMinutes']
           )
         end
       op.call
