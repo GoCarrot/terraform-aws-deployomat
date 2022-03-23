@@ -82,7 +82,7 @@ variable "techno" {
 }
 
 variable "hot_techno_beats" {
-  type = string
+  type        = string
   description = "A link to the hot techno beats to play on undeployment."
-  default = "https://www.youtube.com/watch?v=Z1TlbLfaJp8"
+  default     = "https://www.youtube.com/watch?v=Z1TlbLfaJp8"
 }

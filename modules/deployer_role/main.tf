@@ -32,7 +32,7 @@ locals {
   ]
 
   our_tags = var.tags
-  tags     = {for key, value in local.our_tags : key => value if lookup(data.aws_default_tags.tags.tags, key) != value}
+  tags     = { for key, value in local.our_tags : key => value if lookup(data.aws_default_tags.tags.tags, key) != value }
 }
 
 data "aws_iam_policy_document" "deployer-policy" {

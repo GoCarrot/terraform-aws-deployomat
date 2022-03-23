@@ -45,7 +45,7 @@ locals {
   )
 
   our_tags = merge(var.tags, { Service = local.service, Environment = local.environment })
-  tags     = {for key, value in local.our_tags : key => value if lookup(data.aws_default_tags.tags.tags, key) != value}
+  tags     = { for key, value in local.our_tags : key => value if lookup(data.aws_default_tags.tags.tags, key) != value }
 }
 
 resource "aws_dynamodb_table" "state" {
@@ -153,9 +153,9 @@ data "aws_iam_policy_document" "deployomat-lambda" {
     resources = [local.automatic_undeploy_rule_arn]
 
     condition {
-      test = "StringEquals"
+      test     = "StringEquals"
       variable = "aws:RequestTag/Environment"
-      values = ["&{aws:PrincipalTag/Environment}"]
+      values   = ["&{aws:PrincipalTag/Environment}"]
     }
 
     condition {
@@ -174,15 +174,15 @@ data "aws_iam_policy_document" "deployomat-lambda" {
     resources = [local.automatic_undeploy_rule_arn]
 
     condition {
-      test = "StringEquals"
+      test     = "StringEquals"
       variable = "aws:ResourceTag/Environment"
-      values = ["&{aws:PrincipalTag/Environment}"]
+      values   = ["&{aws:PrincipalTag/Environment}"]
     }
 
     condition {
-      test = "StringEquals"
+      test     = "StringEquals"
       variable = "aws:ResourceTag/Managed"
-      values = [local.service]
+      values   = [local.service]
     }
   }
 
@@ -211,9 +211,9 @@ data "aws_iam_policy_document" "deployomat-lambda" {
     # }
 
     condition {
-      test = "ForAllValues:ArnEquals"
+      test     = "ForAllValues:ArnEquals"
       variable = "events:TargetArn"
-      values = [aws_sfn_state_machine.undeploy.arn]
+      values   = [aws_sfn_state_machine.undeploy.arn]
     }
   }
 
@@ -225,15 +225,15 @@ data "aws_iam_policy_document" "deployomat-lambda" {
     resources = [aws_iam_role.automatic-undeployer.arn]
 
     condition {
-      test = "ArnLike"
+      test     = "ArnLike"
       variable = "iam:AssociatedResourceArn"
-      values = ["arn:${data.aws_partition.current.partition}:events:*:*:rule/*-automatic-undeploy"]
+      values   = ["arn:${data.aws_partition.current.partition}:events:*:*:rule/*-automatic-undeploy"]
     }
 
     condition {
-      test = "StringEquals"
+      test     = "StringEquals"
       variable = "iam:PassedToService"
-      values = ["events.${data.aws_partition.current.dns_suffix}"]
+      values   = ["events.${data.aws_partition.current.dns_suffix}"]
     }
   }
 }
@@ -272,7 +272,7 @@ data "aws_iam_policy_document" "allow-events-assume" {
     actions = ["sts:AssumeRole"]
 
     principals {
-      type = "Service"
+      type        = "Service"
       identifiers = ["events.${data.aws_partition.current.dns_suffix}"]
     }
   }
@@ -287,7 +287,7 @@ data "aws_iam_policy_document" "allow-invoke-undeploy" {
 }
 
 resource "aws_iam_policy" "allow-invoke-undeploy" {
-  name = "AutomaticUndployer"
+  name   = "AutomaticUndployer"
   policy = data.aws_iam_policy_document.allow-invoke-undeploy.json
 
   description = "Allows invoking the undeploy state machine."
@@ -297,11 +297,11 @@ resource "aws_iam_policy" "allow-invoke-undeploy" {
 
 moved {
   from = aws_iam_role.automatic_undeployer
-  to = aws_iam_role.automatic-undeployer
+  to   = aws_iam_role.automatic-undeployer
 }
 
 resource "aws_iam_role" "automatic-undeployer" {
-  name = "${local.service}-AutomaticUndeployer"
+  name               = "${local.service}-AutomaticUndeployer"
   assume_role_policy = data.aws_iam_policy_document.allow-events-assume.json
 
   description = "Role for EventBridge to assume to invoke the undeploy step function"
@@ -310,18 +310,18 @@ resource "aws_iam_role" "automatic-undeployer" {
 }
 
 resource "aws_iam_role_policy_attachment" "allow-invoke-undeploy" {
-  role = aws_iam_role.automatic-undeployer.name
+  role       = aws_iam_role.automatic-undeployer.name
   policy_arn = aws_iam_policy.allow-invoke-undeploy.arn
 }
 
 moved {
   from = aws_iam_role_policy_attachment.deployomat["logging"]
-  to = aws_iam_role_policy_attachment.deployomat-logging
+  to   = aws_iam_role_policy_attachment.deployomat-logging
 }
 
 moved {
   from = aws_iam_role_policy_attachment.deployomat["deploy"]
-  to = aws_iam_role_policy_attachment.deployomat-deploy
+  to   = aws_iam_role_policy_attachment.deployomat-deploy
 }
 
 resource "aws_iam_role_policy_attachment" "deployomat-logging" {
@@ -668,8 +668,8 @@ resource "aws_sfn_state_machine" "undeploy" {
   definition = templatefile(
     "${path.module}/state_machines/undeploy.json",
     {
-      undeploy_lambda_arn                 = aws_lambda_function.deployomat-undeploy.arn,
-      cancel_deploy_state_machine_arn   = aws_sfn_state_machine.cancel-deploy.arn
+      undeploy_lambda_arn             = aws_lambda_function.deployomat-undeploy.arn,
+      cancel_deploy_state_machine_arn = aws_sfn_state_machine.cancel-deploy.arn
     }
   )
 

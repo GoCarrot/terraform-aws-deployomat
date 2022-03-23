@@ -23,8 +23,8 @@ terraform {
 
 locals {
   default_service_tag = lookup(data.aws_default_tags.tags.tags, "Service", null)
-  our_tags = merge(var.tags, { Service = var.deployomat_service_name })
-  tags     = {for key, value in local.our_tags : key => value if lookup(data.aws_default_tags.tags.tags, key) != value}
+  our_tags            = merge(var.tags, { Service = var.deployomat_service_name })
+  tags                = { for key, value in local.our_tags : key => value if lookup(data.aws_default_tags.tags.tags, key) != value }
 }
 
 data "aws_partition" "current" {}
