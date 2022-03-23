@@ -1,3 +1,9 @@
+## 0.2.3
+
+BUG FIXES:
+
+* Ensure target group names are valid.
+
 ## 0.2.2
 
 BUG FIXES:
