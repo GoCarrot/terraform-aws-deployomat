@@ -11,11 +11,13 @@ Deployomat is a tool to manage AMI deployments on AWS. It functions by updating 
 This is a complete example of a minimal deployomat setup.
 
 ```hcl
+data "aws_caller_identity" "current" {}
+
 module "deployomat_meta_access" {
   source = "GoCarrot/deployomat/aws//modules/meta_access_role"
 
   # IDs of accounts where deployomat installations may run.
-  ci_cd_account_ids = [data.aws_caller_identity.sandbox.id]
+  ci_cd_account_ids = [data.aws_caller_identity.current.id]
 
   # Defaults to "deployomat". I recommend keeping the default.
   deployomat_service_name = var.deployomat_service_name
@@ -30,7 +32,7 @@ module "deployomat_deploy_access" {
   source = "GoCarrot/deployomat/aws//modules/deploy_access_role"
 
   # IDs of accounts where deployomat installations may run.
-  ci_cd_account_ids = [data.aws_caller_identity.sandbox.id]
+  ci_cd_account_ids = [data.aws_caller_identity.current.id]
 
   # Defaults to "deployomat". I recommend keeping the default.
   deployomat_service_name = var.deployomat_service_name
@@ -68,8 +70,9 @@ module "deployomat" {
 module "deployer" {
   source = "GoCarrot/deployomat/aws//modules/deployer_role"
 
-  deploy_sfn_arn = module.deployomat.deploy_sfn.arn
-  cancel_sfn_arn = module.deployomat.cancel_sfn.arn
+  deploy_sfn_arn   = module.deployomat.deploy_sfn.arn
+  cancel_sfn_arn   = module.deployomat.cancel_sfn.arn
+  undeploy_sfn_arn = module.deployomat.undeploy_sfn.arn
 
   # The deployer role will be granted read access to all specified log groups.
   cloudwatch_log_group_arns = module.deployomat.cloudwatch_log_group_arns
@@ -77,7 +80,7 @@ module "deployer" {
   # IDs of accounts which should be allowed to perform deploys.
   # This module will trust the entire account, and IAM policies inside these
   # accounts should control who may assume the deployer role to perform deploys.
-  user_account_ids = [data.aws_caller_identity.sandbox.id]
+  user_account_ids = [data.aws_caller_identity.current.id]
 
   # This defaults to "teak". You may change it to a prefix for your own organization.
   # Deployomat expects all SSM parameters and IAM roles to be under paths starting with
@@ -95,6 +98,7 @@ module "slack_notify" {
   slack_notification_channel = var.deployment_channel
 
   deploy_sfn                 = module.deployomat.deploy_sfn
+  undeploy_sfn               = module.deployomat.undeploy_sfn
 }
 
 # These SSM parameters are optional but extremely useful for being able to integrate Deployomat
@@ -108,7 +112,7 @@ module "slack_notify" {
 # PREFIX="/${ORGANIZATION_PREFIX}/${CICD_ENVIRONMENT}/${CICD_ACCOUNT_NAME}"
 # ROLE_ARN=$(aws ssm get-parameter --name "${PREFIX}/roles/deployer" --query Parameter.Value --output text)
 # DEPLOY_SFN=$(aws ssm get-parameter --name "${PREFIX}/config/${DEPLOYOMAT_SERVICE_NAME}/deploy_sfn" --query Parameter.Value --output text)
-# INPUT=$(jq --null-input '{"AccountName": $ENV.DEPLOY_ACCOUNT, "ServiceName": $ENV.DEPLOY_SERVICE, "AmiId": $ENV.DEPLOY_AMI}')
+# INPUT=$(jq --null-input '{"AccountCanonicalSlug": $ENV.DEPLOY_ACCOUNT, "ServiceName": $ENV.DEPLOY_SERVICE, "AmiId": $ENV.DEPLOY_AMI}')
 # # Override our current AWS credentials with temporary credentials for the deploye role
 # eval $(aws sts assume-role --role-arn ${ROLE_ARN} --role-session-name "deploy_${DEPLOY_SERVICE}" |\
 #        jq -r '.Credentials | "export AWS_ACCESS_KEY_ID=\(.AccessKeyId)\nexport AWS_SECRET_ACCESS_KEY=\(.SecretAccessKey)\nexport AWS_SESSION_TOKEN=\(.SessionToken)\n"')
@@ -122,14 +126,20 @@ resource "aws_ssm_parameter" "deployer_role" {
 
 resource "aws_ssm_parameter" "deploy_sfn_arn" {
   type  = "String"
-  name  = "/${var.organization_prefix}/${var.environment}/${var.account_name}/config/${var.deployomat_service_name}/deploy_sfn"
+  name  = "/${var.organization_prefix}/${var.environment}/${var.account_name}/config/${var.deployomat_service_name}/deploy_sfn_arn"
   value = module.deployomat.deploy_sfn.arn
 }
 
 resource "aws_ssm_parameter" "cancel_sfn_arn" {
   type  = "String"
-  name  = "/${var.organization_prefix}/${var.environment}/${var.account_name}/config/${var.deployomat_service_name}/cancel_sfn"
+  name  = "/${var.organization_prefix}/${var.environment}/${var.account_name}/config/${var.deployomat_service_name}/cancel_sfn_arn"
   value = module.deployomat.cancel_sfn.arn
+}
+
+resource "aws_ssm_parameter" "undeploy_sfn_arn" {
+  type  = "String"
+  name  = "/${var.organization_prefix}/${var.environment}/${var.account_name}/config/${var.deployomat_service_name}/undeploy_sfn_arn"
+  value = module.deployomat.undeploy_sfn.arn
 }
 ```
 
@@ -137,15 +147,22 @@ While all resources can be provisioned into a single account, Deployomat is inte
 - Workload account, which contains production user facing services. The deployomat_deploy_access module should be provisioned in every workload account which Deployomat can deploy to.
 - CI/CD account, which contains CI/CD related tooling. The deployomat, deployer_role, and slack_notify modules should be provisioned in every CI/CD account.
 - Meta/Config account, which contains SSM parameters for all accounts. Deployomat looks for the following SSM parameters
+  - /omat/account_registry/${AccountCanonicalSlug}, which should be configured by [Accountomat](https://registry.terraform.io/modules/GoCarrot/accountomat/aws/latest)
   - /${organization_prefix}/${environment}/${account_name}/roles/${deployomat_service_name}, which should contain the role arn for deployomat to assume to manage deploys in account_name
   - /${organization_prefix}/${environment}/${account_name}/config/${service_name}/listener_arns, which should be a StringList type parameter containing all Application Load Balancer listener arns that the service is expected to be available under. If this parameter is absent Deployomat will assume that the service is not a web facing service and will not perform a gradual rollout.
 - User account, which contains IAM users and roles representing people or services who can execute deploys.
 
 ## How To Use
 
+### Account Management
+
+Deploymat requires the use of [Accountomat](https://registry.terraform.io/modules/GoCarrot/accountomat/aws/latest) or [Accountomat/parameters](https://registry.terraform.io/modules/GoCarrot/accountomat/aws/latest/submodules/parameters) to define available accounts. All Deployomat operations take `AccountCanonicalSlug` as an input, which must be the `canonical_slug` output of an Accountomat or Accountomat/parameters module declared in the same account as Deployomat/meta_access_role.
+
 ### Service Setup
 
 At its core, Deployomat functions by updating an existing EC2 Launch Template and then cloning an existing EC2 AutoScaling Group, updating it to use the newly created launch template version. The existing EC2 AutoScaling Group must already be configured to use the EC2 Launch Template.
+
+Check out [Serviceomat](https://registry.terraform.io/modules/GoCarrot/serviceomat/aws/latest) for a module which creates AWS resources for Deployomat to deploy.
 
 A minimum viable service setup could be
 
@@ -365,7 +382,7 @@ If the deployed EC2 instances have an IAM role associated with them, the IAM rol
 
 ### Running Deploys
 
-Deployomat is intended to be used by assuming the role configured by the deployer_role module and then starting the deploy_sfn AWS Step Functions state machine. The minimal input is a JSON document containing AccountName, ServiceName, and AmiId keys. For example, using the aws cli, `aws stepfunctions start-execution --state-machine-arn <DEPLOY_SFN_ARN> --input '{"AccountName":"workload-dev-0001", "ServiceName":"example", "AmiId": "ami-xxxx"}'`
+Deployomat is intended to be used by assuming the role configured by the deployer_role module and then starting the deploy_sfn AWS Step Functions state machine. The minimal input is a JSON document containing AccountCanonicalSlug, ServiceName, and AmiId keys. For example, using the aws cli, `aws stepfunctions start-execution --state-machine-arn <DEPLOY_SFN_ARN> --input '{"AccountCanonicalSlug":"workload-dev-0001", "ServiceName":"example", "AmiId": "ami-xxxx"}'`
 
 Additional deploy options may be configured under a `DeployConfig` in the input. The following parameters are supported
 - `DeployConfig.BakeTime` controls how long Deployomat will pause after a deploy is complete before tearing down the previous deploy in seconds. The default is 60.
@@ -375,5 +392,7 @@ Additional deploy options may be configured under a `DeployConfig` in the input.
 - `DeployConfig.OnConcurrentDeploy` controls how Deployomat will behave if a deploy of a service in an account is started while another deploy of the same service in the same account is active. Valid values are
   - `fail` Deployomat will abort the current deploy if another is active
   - `rollback` This is the default. Deployomat will first initiate a rollback of the current deploy before proceeding with the newly requested deploy.
+- `DeployConfig.AllowUndeploy` controls if the deployed service may be undeployed. If left unspecified, this will default to true unless Deploymat was deployed with `environment = "production"`
+- `DeployConfig.AutomaticUndeployMinutes` enables automatic undeployment of the service. Once the given number of minutes elapses after a successful deployment Deployomat will automatically undeploy the service. It is an error to provide this configuration if the service cannot be undeployed.
 
-A deploy may be cancelled by starting an execution of `cancel_sfn.arn`. The input is a JSON document containning AccountName and ServiceName keys. For example, using the aws cli, `aws stepfunctions start-execution --start-machine-arn <CANCEL_SFN_ARN> --input '{"AccountName":"workload-dev-0001", "ServiceName": "example"}'`
+A deploy may be cancelled by starting an execution of `cancel_sfn.arn`. The input is a JSON document containning AccountCanonicalSlug and ServiceName keys. For example, using the aws cli, `aws stepfunctions start-execution --start-machine-arn <CANCEL_SFN_ARN> --input '{"AccountCanonicalSlug":"workload-dev-0001", "ServiceName": "example"}'`
