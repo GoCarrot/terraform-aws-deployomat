@@ -1,3 +1,9 @@
+## 0.2.4
+
+ENHANCEMENTS:
+
+* Add support for "command" AMI Ids on deployment. Available commands are $name-prefix:{ami_name}, which will deploy the most recently created AMI prefixed with the given {ami_name}, and $launchtemplate:({version}|$Latest|$Default|$LatestMinus:{count}), which will either deploy the given launch template version, the $Latest launch template version, the $Default launch template version, or the $Latest launch template version minus {count}.
+
 ## 0.2.3
 
 BUG FIXES:
