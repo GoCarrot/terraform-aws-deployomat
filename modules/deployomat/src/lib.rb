@@ -261,11 +261,20 @@ module Deployomat
       )
     end
 
-    def latest_launch_template_version(launch_template_id)
-      @client.describe_launch_template_versions(
-        launch_template_id: launch_template_id,
-        versions: ['$Latest']
-      ).launch_template_versions.first
+    def launch_template_version(launch_template_id, version, offset)
+      if version != '$LatestMinus'
+        @client.describe_launch_template_versions(
+          launch_template_id: launch_template_id,
+          versions: [version]
+        ).launch_template_versions.first
+      else
+        latest_version = @client.describe_launch_template_versions(
+          launch_template_id: launch_template_id,
+          versions: ['$Latest']
+        ).launch_template_versions.first.version_number
+        version = (latest_version.to_i - offset.to_i).to_s
+        launch_template_version(launch_template_id, version, nil)
+      end
     end
 
     def latest_ami_for_name_prefix(name_prefix)

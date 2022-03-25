@@ -193,9 +193,14 @@ module Deployomat
     def process_command(ec2, template_asg, cmd)
       launch_template = template_asg.launch_template
       case cmd
-      when '$latest-launchtemplate'
-        puts "Identifying most recent launch template version"
-        [:launch_template, ec2.latest_launch_template_version(launch_template.launch_template_id)]
+      when /^\$launchtemplate:(?<lt_version>([1-9][0-9]*$)|(\$Latest$)|(\$Default$)|(\$LatestMinus:(?<offset>[0-9]+$)))/
+        match_data = $~
+        lt_version = match_data[:lt_version]
+        offset = match_data[:offset]
+        puts "Identifying launch template version for #{lt_version}"
+        # Strip off the offset for $LatestMinus, since we already extracted it into offset.
+        lt_version = lt_version.split(':')[0]
+        [:launch_template, ec2.launch_template_version(launch_template.launch_template_id, lt_version, offset)]
       when /^\$name\-prefix:(?<prefix>[a-zA-Z0-9\(\)\[\] \.\/\-\'\@\_]{3,128}$)/
         match_data = $~
         name_prefix = match_data[:prefix]
