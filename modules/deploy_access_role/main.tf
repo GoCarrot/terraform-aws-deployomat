@@ -110,7 +110,9 @@ data "aws_iam_policy_document" "allow-deploy" {
       "autoscaling:DescribePolicies",
       "autoscaling:DescribeTags",
       "autoscaling:DescribeWarmPool",
-      "autoscaling:DescribeLifecycleHooks"
+      "autoscaling:DescribeLifecycleHooks",
+      "ec2:DescribeLaunchTemplateVersions",
+      "ec2:DescribeImages"
     ]
 
     resources = [
@@ -119,7 +121,10 @@ data "aws_iam_policy_document" "allow-deploy" {
   }
 
   statement {
-    actions = ["ec2:CreateLaunchTemplateVersion"]
+    actions = [
+      "ec2:CreateLaunchTemplateVersion"
+    ]
+
     resources = [
       "arn:${data.aws_partition.current.partition}:ec2:*:${data.aws_caller_identity.current.id}:launch-template/*"
     ]
