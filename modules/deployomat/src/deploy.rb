@@ -109,14 +109,17 @@ module Deployomat
         command = [:ami, ami_id]
       end
 
-      case command
-      in [:ami, id]
-        puts "Creating launch template version..."
-        lt = ec2.create_launch_template_version(launch_template_id, id)
-        puts "Created launch template version #{lt.version_number}"
-      in [:launch_template, version]
-        puts "Reusing launch template version #{lt.version_number}"
-      end
+      lt =
+        case command
+        in [:ami, id]
+          puts "Creating launch template version..."
+          lt = ec2.create_launch_template_version(launch_template_id, id)
+          puts "Created launch template version #{lt.version_number}"
+          lt
+        in [:launch_template, launch_template]
+          puts "Reusing launch template version #{launch_template.version_number}"
+          launch_template
+        end
 
       elbv2 = ElbV2.new(@config)
       # TODO: Support multiple target groups per asg.
@@ -190,10 +193,7 @@ module Deployomat
     def process_command(ec2, template_asg, cmd)
       launch_template = template_asg.launch_template
       case cmd
-      when '$redeploy'
-        puts "Reusing last deployed launch template version"
-        [:launch_template, launch_template.version]
-      when '$latest'
+      when '$latest-launchtemplate'
         puts "Identifying most recent launch template version"
         [:launch_template, ec2.latest_launch_template_version(launch_template.launch_template_id)]
       when /^\$name\-prefix:(?<prefix>[a-zA-Z0-9\(\)\[\] \.\/\-\'\@\_]{3,128}$)/

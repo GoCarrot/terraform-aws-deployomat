@@ -265,23 +265,27 @@ module Deployomat
       @client.describe_launch_template_versions(
         launch_template_id: launch_template_id,
         versions: ['$Latest']
-      ).launch_template_versions[0].version_number
+      ).launch_template_versions.first
     end
 
     def latest_ami_for_name_prefix(name_prefix)
-      owners = ENV['DEPLOYOMAT_AMI_SEARCH_OWNERS'].split(',')
-      if owners.empty?
+      owners = ENV['DEPLOYOMAT_AMI_SEARCH_OWNERS']&.split(',')
+      if !owners || owners.empty?
         raise "Must specify AWS account ids which can build AMIs in DEPLOYOMAT_AMI_SEARCH_OWNERS"
       end
-      images = ec2.describe_images(
+
+      images = @client.describe_images(
         executable_users: ['self'],
-        filters: {
-          state: 'available',
-          owners: owners
-        }
+        filters: [
+          {
+            name: 'state',
+            values: ['available']
+          }
+        ],
+        owners: owners
       ).images
       images.select! { |img| img.name.start_with?(name_prefix) }
-      images.sort_by! { |img| image.created_at }.last
+      images.sort_by! { |img| img.creation_date }.last
     end
 
     def create_launch_template_version(launch_template_id, ami_id)
