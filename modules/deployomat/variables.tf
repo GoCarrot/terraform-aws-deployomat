@@ -45,3 +45,14 @@ variable "tags" {
   description = "Tags to apply to all resources. Will be merged with Service=var.deployomat_service_name and Environment=var.environment, and deduplicated from default tags."
   default     = {}
 }
+
+variable "ami_owner_account_ids" {
+  type = list(string)
+  description = <<-EOT
+  A list of AWS account ids which can create AMIs that Deployomat's AMI lookup should consider.
+  This is a security feature so Deployomat will not deploy an AMI that a malicious actor may have shared to
+  your account. If null, this will default to the account id that this Deployomat is being deployed in. If set
+  to an empty list, will disable AMI lookup.
+EOT
+  default = null
+}

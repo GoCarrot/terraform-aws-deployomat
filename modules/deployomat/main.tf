@@ -45,6 +45,8 @@ locals {
 
   our_tags = merge(var.tags, { Service = local.service, Environment = local.environment })
   tags     = { for key, value in local.our_tags : key => value if lookup(data.aws_default_tags.tags.tags, key, null) != value }
+
+  ami_owner_account_ids = join(",", coalesce(var.ami_owner_account_ids, [data.aws_caller_identity.current.id]))
 }
 
 resource "aws_dynamodb_table" "state" {
@@ -402,6 +404,7 @@ resource "aws_lambda_function" "deployomat-deploy" {
       DEPLOYOMAT_SERVICE_NAME  = local.service
       UNDEPLOY_SFN_ARN         = aws_sfn_state_machine.undeploy.arn
       UNDEPLOYER_ROLE_ARN      = aws_iam_role.automatic-undeployer.arn
+      DEPLOYOMAT_AMI_SEARCH_OWNERS = local.ami_owner_account_ids
     }
   }
 
