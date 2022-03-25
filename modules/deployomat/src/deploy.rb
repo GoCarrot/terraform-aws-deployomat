@@ -101,9 +101,22 @@ module Deployomat
       end
 
       ec2 = Ec2.new(@config)
-      puts "Creating launch template version..."
-      lt = ec2.create_launch_template_version(template_asg.launch_template.launch_template_id, ami_id)
-      puts "Created launch template version #{lt.version_number}"
+      launch_template_id = template_asg.launch_template.launch_template_id
+      if ami_id.start_with?('$')
+        puts "Identifying ami id or launch template version for #{ami_id}"
+        command = process_command(ec2, template_asg, ami_id)
+      else
+        command = [:ami, ami_id]
+      end
+
+      case command
+      in [:ami, id]
+        puts "Creating launch template version..."
+        lt = ec2.create_launch_template_version(launch_template_id, id)
+        puts "Created launch template version #{lt.version_number}"
+      in [:launch_template, version]
+        puts "Reusing launch template version #{lt.version_number}"
+      end
 
       elbv2 = ElbV2.new(@config)
       # TODO: Support multiple target groups per asg.
@@ -173,6 +186,29 @@ module Deployomat
     end
 
   private
+
+    def process_command(ec2, template_asg, cmd)
+      launch_template = template_asg.launch_template
+      case cmd
+      when '$redeploy'
+        puts "Reusing last deployed launch template version"
+        [:launch_template, launch_template.version]
+      when '$latest'
+        puts "Identifying most recent launch template version"
+        [:launch_template, ec2.latest_launch_template_version(launch_template.launch_template_id)]
+      when /^\$name\-prefix:(?<prefix>[a-zA-Z0-9\(\)\[\] \.\/\-\'\@\_]{3,128}$)/
+        match_data = $~
+        name_prefix = match_data[:prefix]
+        puts "Identifying most recent AMI with a name starting with #{name_prefix}"
+        ami = ec2.latest_ami_for_name_prefix(name_prefix)
+        raise "Unable to identify an AMI starting with #{name_prefix}!" if !ami
+        image_id = ami.image_id
+        puts "Selected #{ami.name} : #{image_id}"
+        [:ami, image_id]
+      else
+        raise "Unknown special command #{cmd}"
+      end
+    end
 
     def error(msg)
       puts msg
