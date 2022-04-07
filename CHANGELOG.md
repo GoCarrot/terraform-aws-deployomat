@@ -1,3 +1,9 @@
+## 0.2.5
+
+ENHANCEMENTS:
+
+* Add support for autoscaling groups with placement group configuration.
+
 ## 0.2.4
 
 ENHANCEMENTS:
