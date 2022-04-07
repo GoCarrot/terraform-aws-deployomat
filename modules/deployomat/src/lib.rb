@@ -492,6 +492,10 @@ module Deployomat
         new_asg_parameters[:target_group_arns] = [target_group_arn]
       end
 
+      if template_asg.placement_group
+        new_asg_parameters[:placement_group] = template_asg.placement_group
+      end
+
       @client.create_auto_scaling_group(new_asg_parameters)
 
       if template_asg.warm_pool_configuration
