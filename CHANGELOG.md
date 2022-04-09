@@ -1,3 +1,9 @@
+## 0.2.6
+
+ENHANCEMENTS:
+
+* Nicely error on ASG clone failure and destroy target group if applicable.
+
 ## 0.2.5
 
 ENHANCEMENTS:

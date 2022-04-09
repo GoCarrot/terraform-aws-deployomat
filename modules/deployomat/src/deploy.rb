@@ -133,8 +133,21 @@ module Deployomat
         puts "Cloned target group #{new_target_group_arn}"
       end
 
-      puts "Cloning asg..."
-      asg.clone_asg(template_asg, lt, new_asg_name, production_asg&.instances&.length, new_target_group_arn)
+      begin
+        puts "Cloning asg..."
+        asg.clone_asg(template_asg, lt, new_asg_name, production_asg&.instances&.length, new_target_group_arn)
+      rescue Aws::AutoScaling::Errors::ServiceError => exc
+        message = "Error cloning ASG to #{new_asg_name}. #{exc.class.name} #{exc.message}"
+        puts message
+        error message
+        if new_target_group
+          puts "Destroying new target group #{new_target_group_arn}"
+          elbv2.destroy_tg(new_target_group_arn)
+        end
+        return error_response
+      end
+
+
 
       if production_asg
         puts "Asserting active deploy"
