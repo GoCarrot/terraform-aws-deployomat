@@ -1,3 +1,9 @@
+## 0.2.8
+
+BUG FIXES:
+
+* Fix exception updating default launch template version.
+
 ## 0.2.7
 
 ENHANCEMENTS:
