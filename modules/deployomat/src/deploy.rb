@@ -416,6 +416,11 @@ module Deployomat
       puts "Setting production asg #{deploy_asg.auto_scaling_group_name}"
       @config.set_production_asg(deploy_asg.auto_scaling_group_name, allow_undeploy: allow_undeploy)
 
+      lt_version = deploy_asg.launch_template.version
+      puts "Updating default launch template version to #{lt_version}"
+      ec2 = Ec2.new(@config)
+      ec2.set_default_launch_template_version(deploy_asg.launch_template_id.launch_template_id, lt_version)
+
       if production_asg
         production_asg = asg.get(production_asg)
       end

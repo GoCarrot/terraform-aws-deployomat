@@ -122,7 +122,8 @@ data "aws_iam_policy_document" "allow-deploy" {
 
   statement {
     actions = [
-      "ec2:CreateLaunchTemplateVersion"
+      "ec2:CreateLaunchTemplateVersion",
+      "ec2:ModifyLaunchTemplate"
     ]
 
     resources = [

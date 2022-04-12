@@ -306,6 +306,13 @@ module Deployomat
         source_version: "$Latest"
       ).launch_template_version
     end
+
+    def set_default_launch_template_version(launch_template_id, version)
+      @client.modify_launch_template(
+        launch_template_id: launch_template_id,
+        default_version: version.to_s
+      ).launch_template.default_version_number
+    end
   end
 
   class Events
