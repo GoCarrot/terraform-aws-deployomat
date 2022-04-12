@@ -1,3 +1,9 @@
+## 0.2.7
+
+ENHANCEMENTS:
+
+* Set the most recently deployed launch template version as the default launch template version.
+
 ## 0.2.6
 
 ENHANCEMENTS:
