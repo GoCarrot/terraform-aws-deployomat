@@ -47,7 +47,7 @@ module Deployomat
       production_asg = asg.get(production_asg) if production_asg
 
       listeners = begin
-        params.get("#{prefix}/config/#{service_name}/listener_arns")
+        params.get_list_or_json("#{prefix}/config/#{service_name}/listener_arns")
       rescue Aws::SSM::Errors::ParameterNotFound
         puts "#{@service_name} is not a web service."
         nil
@@ -74,8 +74,13 @@ module Deployomat
 
       target_group = production_asg&.target_group_arns&.first || deploy_asg&.target_group_arns&.first
 
-      production_rules = listeners.map do |listener|
-        puts "Identifying deploy rule for listener #{listener}"
+      production_rules = listeners.map do |(key, listener)|
+        if !listener
+          listener = key
+          key = nil
+        end
+
+        puts "Identifying deploy rule for #{key} listener #{listener}"
         elbv2.find_rule_with_target_in_listener(
           listener, target_group
         )

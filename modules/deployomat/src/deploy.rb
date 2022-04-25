@@ -166,9 +166,14 @@ module Deployomat
 
       if exemplar_tg_arn
         production_rules = []
-        listeners = params.get("#{prefix}/config/#{service_name}/listener_arns")
-        listeners.each do |listener|
-          puts "Preparing deploy rule for listener #{listener}..."
+        listeners = params.get_list_or_json("#{prefix}/config/#{service_name}/listener_arns")
+        listeners.each do |(key, listener)|
+          if !listener
+            listener = key
+            key = nil
+          end
+
+          puts "Preparing deploy rule for #{key} listener #{listener}..."
           production_rules << elbv2.prepare_deploy_rule(
             listener, production_tg_arn, exemplar_tg_arn, new_target_group_arn
           )

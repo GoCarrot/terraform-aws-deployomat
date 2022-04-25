@@ -64,7 +64,7 @@ module Deployomat
       end
 
       listeners = begin
-        params.get("#{prefix}/config/#{service_name}/listener_arns")
+        params.get_list_or_json("#{prefix}/config/#{service_name}/listener_arns")
       rescue Aws::SSM::Errors::ParameterNotFound
         puts "#{@service_name} is not a web service."
         nil
@@ -75,10 +75,15 @@ module Deployomat
         asg.destroy(production_asg.auto_scaling_group_name)
 
         production_asg.target_group_arns&.each do |tg_arn|
-          listeners&.each do |listener_arn|
+          listeners&.each do |(key, listener_arn)|
+            if !listener_arn
+              listener_arn = key
+              key = nil
+            end
+
             rule = elbv2.find_rule_with_target_in_listener(listener_arn, tg_arn)
             if rule
-              puts "Destroying rule in #{listener_arn} : #{rule.rule_arn}"
+              puts "Destroying rule in #{key} #{listener_arn} : #{rule.rule_arn}"
               elbv2.delete_rule(rule.rule_arn)
             end
           end

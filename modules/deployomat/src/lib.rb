@@ -74,6 +74,15 @@ module Deployomat
         ret&.value
       end
     end
+
+    def get_list_or_json(name)
+      ret = @client.get_parameter(name: name)&.parameter
+      if ret&.type == "StringList"
+        ret.value.split(",").map(&:strip)
+      else
+        JSON.parse(ret&.value)
+      end
+    end
   end
 
   class Config
