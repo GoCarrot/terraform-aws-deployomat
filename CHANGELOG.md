@@ -1,3 +1,9 @@
+## 0.2.9
+
+ENHANCEMENTS:
+
+* Now supports JSON encoded lb_listener_arns parameters.
+
 ## 0.2.8
 
 BUG FIXES:
