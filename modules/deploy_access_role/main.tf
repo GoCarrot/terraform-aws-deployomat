@@ -241,7 +241,9 @@ data "aws_iam_policy_document" "allow-deploy" {
       # https://web.archive.org/web/20201112013446/https://docs.aws.amazon.com/elasticloadbalancing/latest/userguide/elb-api-permissions.html
       # Apparently ElasticLoadBalancing needs these
       "ec2:DescribeInternetGateways",
-      "ec2:DescribeVpcs"
+      "ec2:DescribeVpcs",
+      # This is needed for launch templates which have tags on them
+      "ec2:CreateTags",
     ]
 
     resources = [
