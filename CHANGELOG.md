@@ -1,3 +1,9 @@
+## 0.2.10
+
+ENHANCEMENTS:
+
+* Now supports launch templates with tag specifications.
+
 ## 0.2.9
 
 ENHANCEMENTS:
