@@ -1,3 +1,9 @@
+## 0.2.12
+
+BUG FIXES:
+
+* Resolve circular dependency introduced by 0.2.11 by splitting lambda related permissions into a separate policy.
+
 ## 0.2.11
 
 BUG FIXES:
