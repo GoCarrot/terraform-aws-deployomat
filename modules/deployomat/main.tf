@@ -527,18 +527,6 @@ data "aws_iam_policy_document" "deployomat-sfn" {
 
   statement {
     actions = [
-      "lambda:InvokeFunction"
-    ]
-
-    resources = [
-      aws_lambda_function.deployomat-cancel.arn,
-      aws_lambda_function.deployomat-deploy.arn,
-      aws_lambda_function.deployomat-undeploy.arn
-    ]
-  }
-
-  statement {
-    actions = [
       "states:StartExecution"
     ]
 
@@ -573,11 +561,34 @@ data "aws_iam_policy_document" "deployomat-sfn" {
   }
 }
 
+data "aws_iam_policy_document" "deployomat-sfn-lambda-invoke" {
+  statement {
+    actions = [
+      "lambda:InvokeFunction"
+    ]
+
+    resources = [
+      aws_lambda_function.deployomat-cancel.arn,
+      aws_lambda_function.deployomat-deploy.arn,
+      aws_lambda_function.deployomat-undeploy.arn
+    ]
+  }
+}
+
 resource "aws_iam_policy" "deployomat-sfn" {
   name   = "DeployomatStates"
   policy = data.aws_iam_policy_document.deployomat-sfn.json
 
-  description = "Allows deployomat state machines to invoke lambdas and log."
+  description = "Allows deployomat state machines to invoke other state machines, cloudwatch events, and log."
+
+  tags = local.tags
+}
+
+resource "aws_iam_policy" "deployomat-sfn-lambda-invoke" {
+  name   = "DeployomatStates-LambdaInvoke"
+  policy = data.aws_iam_policy_document.deployomat-sfn-lambda-invoke.json
+
+  description = "Allows deployomat state machines to invoke lambdas."
 
   tags = local.tags
 }
@@ -594,6 +605,11 @@ resource "aws_iam_role" "deployomat-sfn" {
 resource "aws_iam_role_policy_attachment" "deployomat-sfn" {
   role       = aws_iam_role.deployomat-sfn.name
   policy_arn = aws_iam_policy.deployomat-sfn.arn
+}
+
+resource "aws_iam_role_policy_attachment" "deployomat-sfn-lambda-invoke" {
+  role       = aws_iam_role.deployomat-sfn.name
+  policy_arn = aws_iam_policy.deployomat-sfn-lambda-invoke.arn
 }
 
 resource "aws_sfn_state_machine" "cancel-deploy" {
