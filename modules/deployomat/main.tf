@@ -615,7 +615,8 @@ resource "aws_sfn_state_machine" "cancel-deploy" {
   tags = local.tags
 
   depends_on = [
-    aws_cloudwatch_log_resource_policy.deployomat-logging
+    aws_cloudwatch_log_resource_policy.deployomat-logging,
+    aws_iam_role_policy_attachment.deployomat-sfn
   ]
 }
 
@@ -638,7 +639,8 @@ resource "aws_sfn_state_machine" "loop-wait-state" {
   tags = local.tags
 
   depends_on = [
-    aws_cloudwatch_log_resource_policy.deployomat-logging
+    aws_cloudwatch_log_resource_policy.deployomat-logging,
+    aws_iam_role_policy_attachment.deployomat-sfn
   ]
 }
 
@@ -663,7 +665,8 @@ resource "aws_sfn_state_machine" "deploy" {
   tags = local.tags
 
   depends_on = [
-    aws_cloudwatch_log_resource_policy.deployomat-logging
+    aws_cloudwatch_log_resource_policy.deployomat-logging,
+    aws_iam_role_policy_attachment.deployomat-sfn
   ]
 }
 
@@ -687,6 +690,7 @@ resource "aws_sfn_state_machine" "undeploy" {
   tags = local.tags
 
   depends_on = [
-    aws_cloudwatch_log_resource_policy.deployomat-logging
+    aws_cloudwatch_log_resource_policy.deployomat-logging,
+    aws_iam_role_policy_attachment.deployomat-sfn
   ]
 }
