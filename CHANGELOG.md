@@ -1,3 +1,9 @@
+## 0.2.11
+
+BUG FIXES:
+
+* Ensure that DeployomatStates IAM policy for DeployomatStates role is attached before attempting to create state machines with DeployomatStates states role.
+
 ## 0.2.10
 
 ENHANCEMENTS:
