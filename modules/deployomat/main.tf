@@ -111,6 +111,7 @@ data "aws_iam_policy_document" "deployomat-lambda" {
   statement {
     actions = [
       "sts:AssumeRole",
+      "sts:TagSession"
     ]
 
     resources = ["arn:${data.aws_partition.current.partition}:iam::*:role/*"]
