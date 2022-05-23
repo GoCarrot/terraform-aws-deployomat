@@ -256,6 +256,23 @@ data "aws_iam_policy_document" "allow-deploy" {
       values   = ["true"]
     }
   }
+
+  statement {
+    actions = [
+      "logs:FilterLogEvents"
+    ]
+
+    resources = [
+      "arn:aws:logs:*:*:log-group:/${var.organization_prefix}/server/&{aws:PrincipalTag/Environment}/service/&{aws:PrincipalTag/ServiceLogName}:log-stream:",
+      "arn:aws:logs:*:*:log-group:/${var.organization_prefix}/server/&{aws:PrincipalTag/Environment}/service/&{aws:PrincipalTag/ServiceLogName}/*:log-stream:",
+    ]
+
+    condition {
+      test     = "StringLike"
+      variable = "aws:PrincipalTag/ServiceLogName"
+      values   = ["?*"]
+    }
+  }
 }
 
 resource "aws_iam_policy" "allow-deploy" {
