@@ -1,3 +1,9 @@
+## 0.2.13
+
+ENHANCEMENTS:
+
+* Updated IAM policies to allow Deployomat to read service logs for the service being deployed. This will be used by the Zookeeper Deployomat.
+
 ## 0.2.12
 
 BUG FIXES:
