@@ -59,6 +59,12 @@ data "aws_iam_policy_document" "allow-deployomat-assume" {
       variable = "aws:PrincipalTag/Service"
       values   = [var.deployomat_service_name]
     }
+
+    condition {
+      test     = "ForAllValues:StringEquals"
+      variable = "aws:TagKeys"
+      values   = ["ServiceName", "ServiceLogName"]
+    }
   }
 }
 
