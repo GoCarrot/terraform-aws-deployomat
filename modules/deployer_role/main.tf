@@ -78,7 +78,7 @@ data "aws_iam_policy_document" "deployer-policy" {
 }
 
 resource "aws_iam_policy" "deployer-policy" {
-  name        = "DeployerAccess"
+  name        = "${var.role_name}Access"
   description = "Grants access to state machines and logs necessary to run deploys."
   policy      = data.aws_iam_policy_document.deployer-policy.json
 }
