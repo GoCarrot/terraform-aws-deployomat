@@ -1,3 +1,9 @@
+## 0.2.14
+
+ENHANCEMENTS:
+
+* Support multiple deployer roles.
+
 ## 0.2.13
 
 ENHANCEMENTS:
