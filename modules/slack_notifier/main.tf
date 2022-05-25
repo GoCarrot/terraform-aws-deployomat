@@ -126,6 +126,7 @@ resource "aws_lambda_function" "deployomat-slack-notify" {
       SLACK_CHANNEL    = var.slack_notification_channel
       SLACK_BOT_TOKEN  = var.slack_bot_token
       DEPLOY_SFN_ARN   = var.deploy_sfn.arn
+      CANCEL_SFN_ARN   = var.cancel_sfn != null ? var.cancel_sfn.arn : ""
       UNDEPLOY_SFN_ARN = var.undeploy_sfn.arn
       UNDEPLOY_TECHNO  = var.techno ? "true" : "false"
       TECHNO_BEATS     = var.hot_techno_beats
@@ -142,12 +143,12 @@ resource "aws_lambda_function" "deployomat-slack-notify" {
 
 resource "aws_cloudwatch_event_rule" "deploy-run" {
   name        = "${var.deploy_sfn.name}Executions"
-  description = "Matches all execution state changes on ${var.deploy_sfn.name} or ${var.undeploy_sfn.name}"
+  description = var.cancel_sfn != null ? "Matches all execution state changes on ${var.deploy_sfn.name}, ${var.undeploy_sfn.name}, or ${var.cancel_sfn.name}" : "Matches all execution state changes on ${var.deploy_sfn.name} or ${var.undeploy_sfn.name}"
 
   event_pattern = jsonencode({
     source      = compact(["aws.states", var.custom_update_event_source]),
     detail-type = compact(["Step Functions Execution Status Change", var.custom_update_event_detail_type]),
-    resources   = [ for arn in [var.deploy_sfn.arn, var.undeploy_sfn.arn] : { prefix = "${replace(arn, ":stateMachine:", ":execution:")}:" } ]
+    resources   = [ for arn in compact([var.deploy_sfn.arn, var.undeploy_sfn.arn, var.cancel_sfn != null ? var.cancel_sfn.arn : null]) : { prefix = "${replace(arn, ":stateMachine:", ":execution:")}:" } ]
   })
 
   tags = local.tags

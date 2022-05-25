@@ -59,6 +59,41 @@ module SlackNotify
     end
   end
 
+  def self.notification_for_cancel(event)
+    detail = event['detail']
+    input = JSON.parse(detail['input'])
+
+    skip_notifications = input.dig('DeployConfig', 'SkipNotifications')
+
+    status = detail['status']
+    deployment_desc = "cancelling deployment of #{input['ServiceName']} to #{input['AccountCanonicalSlug']} (Execution <https://console.aws.amazon.com/states/home?region=#{ENV['AWS_REGION']}#/executions/details/#{detail['executionArn']}|#{detail['name']}>)"
+    if status == 'RUNNING'
+      return { text: nil } if skip_notifications
+      { text: "Started #{deployment_desc}" }
+    elsif status == 'UPDATE'
+      return { text: nil } if skip_notifications
+      update = detail['updates']
+      return { text: "Update from #{deployment_desc}\n\n#{update.join("\n")}"}
+    elsif status == 'SUCCEEDED'
+      output = JSON.parse(detail['output'])
+      out_status = output['Status']
+      if out_status == 'complete'
+        return { text: nil } if skip_notifications
+        { text: "Completed #{deployment_desc}" }
+      elsif out_status == 'deploy_aborted'
+        { text: "Aborted d#{deployment_desc}" }
+      elsif out_status == 'fail'
+        { text: "Failed #{deployment_desc}\n\n#{output['Error'].join("\n")}" }
+      else
+        { text: "Unknown success result from #{deployment_desc}: #{out_status}" }
+      end
+    elsif status == 'FAILED'
+      { text: "Failed #{deployment_desc}" }
+    else
+      { text: "#{status}: #{deployment_desc} -- LIKELY IN AN INCONSISTENT STATE!!!" }
+    end
+  end
+
   def self.notification_for_undeploy(event)
     detail = event['detail']
     input = JSON.parse(detail['input'])
@@ -121,6 +156,8 @@ module SlackNotify
       request.merge!(notification_for_event(event))
     elsif sfn_arn == ENV['UNDEPLOY_SFN_ARN']
       request.merge!(notification_for_undeploy(event))
+    elsif sfn_arn == ENV['CANCEL_SFN_ARN']
+      request.merge!(notification_for_cancel(event))
     else
       puts event
       return "Unknown state function trigger #{sfn_arn}"

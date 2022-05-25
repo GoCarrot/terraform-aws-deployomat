@@ -43,6 +43,15 @@ variable "deploy_sfn" {
   description = "The deployment step functions state machine."
 }
 
+variable "cancel_sfn" {
+  type = object({
+    arn  = string
+    name = string
+  })
+  description = "The cancel step functions state machine."
+  default     = null
+}
+
 variable "undeploy_sfn" {
   type = object({
     arn  = string
