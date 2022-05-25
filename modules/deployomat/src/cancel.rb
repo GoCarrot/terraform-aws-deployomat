@@ -126,8 +126,9 @@ module Deployomat
 
       deploy_asg_name = @config.deploy_asg
       if deploy_asg_name.nil? || deploy_asg_name.empty?
-        puts "No deployment of #{service_name} in #{account_name} active"
-        return :fail
+        msg = "No deployment of #{service_name} in #{account_name} active"
+        puts msg
+        return { Status: :fail, Error: msg }
       end
 
       production_asg = @config.production_asg
@@ -170,6 +171,8 @@ module Deployomat
         puts "Resetting to clean state."
         @config.set_production_asg('')
       end
+
+      return { Status: :complete }
     end
   end
 end
