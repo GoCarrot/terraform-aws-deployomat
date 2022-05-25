@@ -1,3 +1,10 @@
+## 0.2.15
+
+ENHANCEMENTS:
+
+* Slack notifier now supports custom update events.
+* Slack notifier now optionally supports notifying on deploy cancels by setting the cancel_sfn input.
+
 ## 0.2.14
 
 ENHANCEMENTS:
