@@ -51,6 +51,18 @@ variable "undeploy_sfn" {
   description = "The undeploy step functions state machine."
 }
 
+variable "custom_update_event_source" {
+  type        = string
+  description = "The custom event source used for in-progress update notifications"
+  default     = "omat.deploy.update"
+}
+
+variable "custom_update_event_detail_type" {
+  type        = string
+  description = "The custom event detail-type used for in-progress update notifications"
+  default     = "Deployomat Update"
+}
+
 variable "lambda_iam_role_arn" {
   type        = string
   description = "The ARN of an IAM role to assign to the created lambda. The only required permissions are for logging. If null, this module will create a suitable IAM role and policy."

@@ -145,11 +145,9 @@ resource "aws_cloudwatch_event_rule" "deploy-run" {
   description = "Matches all execution state changes on ${var.deploy_sfn.name} or ${var.undeploy_sfn.name}"
 
   event_pattern = jsonencode({
-    source      = ["aws.states"],
-    detail-type = ["Step Functions Execution Status Change"],
-    detail = {
-      stateMachineArn = [var.deploy_sfn.arn, var.undeploy_sfn.arn]
-    }
+    source      = compact(["aws.states", var.custom_update_event_source]),
+    detail-type = compact(["Step Functions Execution Status Change", var.custom_update_event_detail_type]),
+    resources   = [ for arn in [var.deploy_sfn.arn, var.undeploy_sfn.arn] : { prefix = "${replace(arn, ":stateMachine:", ":execution:")}:" } ]
   })
 
   tags = local.tags
