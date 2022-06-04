@@ -89,6 +89,27 @@ module Deployomat
     UNDEPLOYING = 'undeploying'
     ALLOW = 'allow'
 
+    ID_VAR = '#DEPLOY_ID'
+    ASG_VAR = '#DEPLOY_ASG'
+    UNDEPLOY_VAR = '#UNDEPLOY_STATE'
+    PROD_ASG_VAR = '#PROD_ASG'
+
+    ID_KEY = ':deploy_id'
+    ASG_KEY = ':deploy_asg'
+    NEW_ID_KEY = ':new_deploy_id'
+    OLD_ID_KEY = ':old_deploy_id'
+    EMPTY_KEY = ':empty'
+    UNDEPLOY_KEY = ':undeploying'
+    ALLOW_KEY = ':allow'
+    PROD_ASG_KEY = ':prod_asg'
+    UNDEPLOY_STATE_KEY = ':undeploy_state'
+
+    ID_NAME = 'deploy_id'
+    ASG_NAME = 'deploy_asg_name'
+    UNDEPLOY_STATE_NAME = 'undeploy_state'
+    DEPLOY_NAME = 'deploy_asg'
+    PROD_ASG_NAME = 'production_asg_name'
+
     attr_reader :account_canonical_slug, :account_name, :service_name, :prefix,
                 :deploy_id, :params, :organization_prefix, :account_environment,
                 :primary_key
@@ -127,116 +148,133 @@ module Deployomat
     end
 
     def production_asg
-      @config&.fetch('production_asg_name', nil)
+      @config&.fetch(PROD_ASG_NAME, nil)
     end
 
     def deploy_asg
-      @config&.fetch('deploy_asg_name', nil)
+      @config&.fetch(ASG_NAME, nil)
     end
 
     def undeploying?
-      @config&.fetch('undeploy_state', '') == UNDEPLOYING
+      @config&.fetch(UNDEPLOY_STATE_NAME, '') == UNDEPLOYING
     end
 
     def undeployable?
-      @config&.fetch('undeploy_state', '') == ALLOW
+      @config&.fetch(UNDEPLOY_STATE_NAME, '') == ALLOW
     end
+
+    ASSERT_START_CANCEL_UPDATE_EXPR = "SET #{ID_VAR} = #{NEW_ID_KEY}"
+    ASSERT_START_CANCEL_CONDITION_EXPR = "#{ID_VAR} = #{OLD_ID_KEY} AND attribute_exists(#{ASG_VAR}) AND #{ASG_VAR} <> #{EMPTY_KEY}"
 
     def assert_start_cancel
       @config = @client.update_item(
         table_name: ENV['DEPLOYOMAT_TABLE'],
         return_values: 'ALL_NEW',
         key: { 'id' => @primary_key },
-        update_expression: 'SET #DEPLOY_ID = :new_deploy_id',
-        condition_expression: '#DEPLOY_ID = :old_deploy_id AND attribute_exists(#DEPLOY_ASG) AND #DEPLOY_ASG <> :empty',
+        update_expression: ASSERT_START_CANCEL_UPDATE_EXPR,
+        condition_expression: ASSERT_START_CANCEL_CONDITION_EXPR,
         expression_attribute_names: {
-          '#DEPLOY_ID' => 'deploy_id',
-          '#DEPLOY_ASG' => 'deploy_asg_name'
+          ID_VAR => ID_NAME,
+          ASG_VAR => ASG_NAME
         },
         expression_attribute_values: {
-          ':new_deploy_id' => @deploy_id,
-          ':old_deploy_id' => @config&.fetch('deploy_id', nil),
-          ':empty' => ''
+          NEW_ID_KEY => @deploy_id,
+          OLD_ID_KEY => @config&.fetch(ID_NAME, nil),
+          EMPTY_KEY => ''
         }
       ).attributes
     end
+
+    ASSERT_START_DEPLOY_UPDATE_EXPR = "SET #{ID_VAR} = #{NEW_ID_KEY}, #{ASG_VAR} = #{ASG_KEY}"
+    ASSERT_START_DEPLOY_CONDITION_EXPR = "(attribute_not_exists(#{ID_VAR}) OR #{ID_VAR} = #{OLD_ID_KEY}) AND (attribute_not_exists(#{ASG_VAR}) OR #{ASG_VAR} = #{EMPTY_KEY}) AND (attribute_not_exists(#{UNDEPLOY_VAR}) OR #{UNDEPLOY_VAR} <> #{UNDEPLOY_KEY})"
 
     def assert_start_deploy(name)
       @config = @client.update_item(
         table_name: ENV['DEPLOYOMAT_TABLE'],
         return_values: 'ALL_NEW',
         key: { 'id' => @primary_key },
-        update_expression: 'SET #DEPLOY_ID = :new_deploy_id, #DEPLOY_ASG = :deploy_asg',
-        condition_expression: '(attribute_not_exists(#DEPLOY_ID) OR #DEPLOY_ID = :old_deploy_id) AND (attribute_not_exists(#DEPLOY_ASG) OR #DEPLOY_ASG = :empty) AND (attribute_not_exists(#UNDEPLOY_STATE) OR #UNDEPLOY_STATE <> :undeploying)',
+        update_expression: ASSERT_START_DEPLOY_UPDATE_EXPR,
+        condition_expression: ASSERT_START_DEPLOY_CONDITION_EXPR,
         expression_attribute_names: {
-          '#DEPLOY_ID' => 'deploy_id',
-          '#DEPLOY_ASG' => 'deploy_asg_name',
-          '#UNDEPLOY_STATE' => 'undeploy_state'
+          ID_VAR => ID_NAME,
+          ASG_VAR => ASG_NAME,
+          UNDEPLOY_VAR => UNDEPLOY_STATE_NAME
         },
         expression_attribute_values: {
-          ':new_deploy_id' => @deploy_id,
-          ':old_deploy_id' => @config&.fetch('deploy_id', nil),
-          ':empty' => '',
-          ':deploy_asg' => name,
-          ':undeploying' => UNDEPLOYING
+          NEW_ID_KEY => @deploy_id,
+          OLD_ID_KEY => @config&.fetch(ID_NAME, nil),
+          EMPTY_KEY => '',
+          ASG_KEY => name,
+          UNDEPLOY_KEY => UNDEPLOYING
         }
       ).attributes
     end
+
+    ASSERT_START_UNDEPLOY_UPDATE_EXPR = "SET #{ID_VAR} = #{NEW_ID_KEY}, #{UNDEPLOY_VAR} = #{UNDEPLOY_KEY}"
+    ASSERT_START_UNDEPLOY_CONDITION_EXPR = "(attribute_not_exists(#{ID_VAR}) OR #{ID_VAR} = #{OLD_ID_KEY}) AND (attribute_not_exists(#{ASG_VAR}) OR #{ASG_VAR} = #{EMPTY_KEY}) AND (#{UNDEPLOY_VAR} = #{ALLOW_KEY} OR #{UNDEPLOY_VAR} = #{UNDEPLOY_KEY})"
 
     def assert_start_undeploy
       @config = @client.update_item(
         table_name: ENV['DEPLOYOMAT_TABLE'],
         return_values: 'ALL_NEW',
         key: { 'id' => @primary_key },
-        update_expression: 'SET #DEPLOY_ID = :new_deploy_id, #UNDEPLOY_STATE = :undeploying',
-        condition_expression: '(attribute_not_exists(#DEPLOY_ID) OR #DEPLOY_ID = :old_deploy_id) AND (attribute_not_exists(#DEPLOY_ASG) OR #DEPLOY_ASG = :empty) AND (#UNDEPLOY_STATE = :allow OR #UNDEPLOY_STATE = :undeploying)',
+        update_expression: ASSERT_START_UNDEPLOY_UPDATE_EXPR,
+        condition_expression: ASSERT_START_UNDEPLOY_CONDITION_EXPR,
         expression_attribute_names: {
-          '#DEPLOY_ID' => 'deploy_id',
-          '#DEPLOY_ASG' => 'deploy_asg',
-          '#UNDEPLOY_STATE' => 'undeploy_state'
+          ID_VAR => ID_NAME,
+          ASG_VAR => DEPLOY_NAME,
+          UNDEPLOY_VAR => UNDEPLOY_STATE_NAME
         },
         expression_attribute_values: {
-          ':new_deploy_id' => @deploy_id,
-          ':old_deploy_id' => @config&.fetch('deploy_id', nil),
-          ':empty' => '',
-          ':undeploying' => UNDEPLOYING,
-          ':allow' => ALLOW
+          NEW_ID_KEY => @deploy_id,
+          OLD_ID_KEY => @config&.fetch(ID_NAME, nil),
+          EMPTY_KEY => '',
+          UNDEPLOY_KEY => UNDEPLOYING,
+          ALLOW_KEY => ALLOW
         }
       ).attributes
     end
+
+    COMPLETE_UNDEPLOY_CONDITION_EXPR = "(attribute_not_exists(#{ID_VAR}) OR #{ID_VAR} = #{ID_KEY}) AND (attribute_not_exists(#{UNDEPLOY_VAR}) OR #{UNDEPLOY_VAR} = #{UNDEPLOY_KEY})"
 
     def complete_undeploy
       @config = @client.delete_item(
         table_name: ENV['DEPLOYOMAT_TABLE'],
         return_values: 'ALL_OLD',
         key: { 'id' => @primary_key },
-        condition_expression: '(attribute_not_exists(#DEPLOY_ID) OR #DEPLOY_ID = :deploy_id) AND (attribute_not_exists(#UNDEPLOY_STATE) OR #UNDEPLOY_STATE = :undeploying)',
+        condition_expression: COMPLETE_UNDEPLOY_CONDITION_EXPR,
         expression_attribute_names: {
-          '#DEPLOY_ID' => 'deploy_id',
-          '#UNDEPLOY_STATE' => 'undeploy_state'
+          ID_VAR => ID_NAME,
+          UNDEPLOY_VAR => UNDEPLOY_STATE_NAME
         },
         expression_attribute_values: {
-          ':deploy_id' => @deploy_id,
-          ':undeploying' => UNDEPLOYING
+          ID_KEY => @deploy_id,
+          UNDEPLOY_KEY => UNDEPLOYING
         }
       )
     end
+
+    ASSERT_ACTIVE_UPDATE_EXPR = "SET #{ID_VAR} = #{ID_KEY}"
+    ASSERT_ACTIVE_CONDITION_EXPR = "#{ID_VAR} = #{ID_KEY}"
 
     def assert_active
       @config = @client.update_item(
         table_name: ENV['DEPLOYOMAT_TABLE'],
         return_values: 'ALL_NEW',
         key: { 'id' => @primary_key },
-        update_expression: 'SET #DEPLOY_ID = :deploy_id',
-        condition_expression: '#DEPLOY_ID = :deploy_id',
+        update_expression: ASSERT_ACTIVE_UPDATE_EXPR,
+        condition_expression: ASSERT_ACTIVE_CONDITION_EXPR,
         expression_attribute_names: {
-          '#DEPLOY_ID' => 'deploy_id'
+          ID_VAR => ID_NAME
         },
         expression_attribute_values: {
-          ':deploy_id' => @deploy_id
+          ID_KEY => @deploy_id
         }
       ).attributes
     end
+
+    SET_PROD_ASG_UPDATE_EXPR = "SET #{PROD_ASG_VAR} = #{PROD_ASG_KEY}, #{ASG_VAR} = #{EMPTY_KEY}, #{UNDEPLOY_VAR} = #{UNDEPLOY_STATE_KEY}"
+    SET_PROD_ASG_CONDITION_EXPR = "#{ID_VAR} = #{ID_KEY}"
 
     def set_production_asg(name, allow_undeploy: nil)
       allow_undeploy = undeploying? || undeployable? if allow_undeploy.nil?
@@ -245,19 +283,19 @@ module Deployomat
         table_name: ENV['DEPLOYOMAT_TABLE'],
         return_values: 'ALL_NEW',
         key: { 'id' => @primary_key },
-        update_expression: 'SET #PROD_ASG = :prod_asg, #DEPLOY_ASG = :empty, #UNDEPLOY_STATE = :undeploy_state',
-        condition_expression: '#DEPLOY_ID = :deploy_id',
+        update_expression: SET_PROD_ASG_UPDATE_EXPR,
+        condition_expression: SET_PROD_ASG_CONDITION_EXPR,
         expression_attribute_names: {
-          '#DEPLOY_ID' => 'deploy_id',
-          '#PROD_ASG' => 'production_asg_name',
-          '#DEPLOY_ASG' => 'deploy_asg_name',
-          '#UNDEPLOY_STATE' => 'undeploy_state'
+          ID_VAR => ID_NAME,
+          PROD_ASG_VAR => PROD_ASG_NAME,
+          ASG_VAR => ASG_NAME,
+          UNDEPLOY_VAR => UNDEPLOY_STATE_NAME
         },
         expression_attribute_values: {
-          ':deploy_id' => @deploy_id,
-          ':prod_asg' => name,
-          ':empty' => '',
-          ':undeploy_state' => allow_undeploy ? ALLOW : ''
+          ID_KEY => @deploy_id,
+          PROD_ASG_KEY => name,
+          EMPTY_KEY => '',
+          UNDEPLOY_STATE_KEY => allow_undeploy ? ALLOW : ''
         }
       ).attributes
     end
