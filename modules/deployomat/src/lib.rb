@@ -607,7 +607,6 @@ module Deployomat
 
     def find_rule_with_target_in_listener(listener_arn, target_group)
       rules = @client.describe_rules(listener_arn: listener_arn).rules
-      production_rule = exemplar_rule = nil
 
       # TODO: Support multiple rules per target group.
       rules.find do |rule|
