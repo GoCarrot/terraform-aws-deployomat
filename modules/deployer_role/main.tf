@@ -93,6 +93,16 @@ data "aws_iam_policy_document" "allow-meta-account-assume" {
       type        = "AWS"
       identifiers = [for account_id in var.user_account_ids : "arn:${data.aws_partition.current.partition}:iam::${account_id}:root"]
     }
+
+    dynamic "condition" {
+      for_each = var.external_id != null ? [1] : []
+
+      content {
+        test     = "StringEquals"
+        variable = "sts:ExternalId"
+        values   = [var.external_id]
+      }
+    }
   }
 }
 

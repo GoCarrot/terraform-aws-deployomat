@@ -34,6 +34,7 @@ module Deployomat
         Aws::AssumeRoleCredentials.new(
           role_arn: ENV['DEPLOYOMAT_META_ROLE_ARN'],
           role_session_name: deploy_id[0...64],
+          external_id: ENV['ROLE_EXTERNAL_ID'],
           tags: [
             {
               key: 'Environment',
