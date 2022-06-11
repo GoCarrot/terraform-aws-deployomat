@@ -65,6 +65,16 @@ data "aws_iam_policy_document" "allow-deployomat-assume" {
       variable = "aws:PrincipalTag/Service"
       values   = [var.deployomat_service_name]
     }
+
+    dynamic "condition" {
+      for_each = var.external_id != null ? [1] : []
+
+      content {
+        test     = "StringEquals"
+        variable = "sts:ExternalId"
+        values   = [var.external_id]
+      }
+    }
   }
 }
 
