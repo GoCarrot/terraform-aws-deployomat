@@ -39,8 +39,7 @@ data "aws_default_tags" "tags" {}
 data "aws_iam_policy_document" "allow-deployomat-assume" {
   statement {
     actions = [
-      "sts:AssumeRole",
-      "sts:TagSession"
+      "sts:AssumeRole"
     ]
 
     principals {
@@ -74,6 +73,35 @@ data "aws_iam_policy_document" "allow-deployomat-assume" {
         variable = "sts:ExternalId"
         values   = [var.external_id]
       }
+    }
+  }
+
+  statement {
+    actions = [
+      "sts:TagSession"
+    ]
+
+    principals {
+      type        = "AWS"
+      identifiers = formatlist("arn:${data.aws_partition.current.partition}:iam::%s:root", var.ci_cd_account_ids)
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Environment"
+      values   = ["&{aws:PrincipalTag/Environment}"]
+    }
+
+    condition {
+      test     = "ForAnyValue:StringLike"
+      variable = "sts:TransitiveTagKeys"
+      values   = ["Environment"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:PrincipalTag/Service"
+      values   = [var.deployomat_service_name]
     }
   }
 }
