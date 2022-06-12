@@ -73,6 +73,8 @@ module LambdaFunctions
           Deployomat::FinishDeploy.new(
             config, allow_undeploy: event['AllowUndeploy'], automatic_undeploy_minutes: event['AutomaticUndeployMinutes']
           )
+        else
+          return { Status: :fail, Error: ["Unexpected step: '#{event['Step']}'"] }
         end
       op.call
     end

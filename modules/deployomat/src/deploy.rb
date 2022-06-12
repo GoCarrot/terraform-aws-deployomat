@@ -17,6 +17,10 @@
 require_relative 'lib'
 
 module Deployomat
+  ACTIVE_DEPLOY_MSG = "Asserting active deploy"
+  NOT_ACTIVE_MSG = "No longer active deploy."
+  ACTIVE_ASSERT_MSG = "Asserted active"
+
   class StartDeploy
     extend Forwardable
 
@@ -150,14 +154,14 @@ module Deployomat
 
 
       if production_asg
-        puts "Asserting active deploy"
+        puts ACTIVE_DEPLOY_MSG
         begin
           @config.assert_active
         rescue Aws::DynamoDB::Errors::ConditionalCheckFailedException
-          error "No longer active deploy."
+          error NOT_ACTIVE_MSG
           return error_response
         end
-        puts "Asserted active"
+        puts ACTIVE_ASSERT_MSG
         puts "Preventing scale-in of #{production_asg.auto_scaling_group_name}"
         asg.prevent_scale_in(production_asg)
       end
@@ -264,14 +268,14 @@ module Deployomat
     def call
       elbv2 = ElbV2.new(@config)
 
-      puts "Asserting active deploy"
+      puts ACTIVE_DEPLOY_MSG
       begin
         @config.assert_active
       rescue Aws::DynamoDB::Errors::ConditionalCheckFailedException
-        puts "No longer active deploy."
+        puts NOT_ACTIVE_MSG
         return { Status: :deploy_aborted }
       end
-      puts "Asserted active"
+      puts ACTIVE_ASSERT_MSG
 
       healthy_count = elbv2.count_healthy(target_group_arn)
       puts "Waiting for #{min_healthy} healthy instances, have #{healthy_count}"
@@ -310,14 +314,14 @@ module Deployomat
 
       total = progress + step_size
       production_rules.each do |rule|
-        puts "Asserting active deploy"
+        puts ACTIVE_DEPLOY_MSG
         begin
           @config.assert_active
         rescue Aws::DynamoDB::Errors::ConditionalCheckFailedException
-          puts "No longer active deploy."
+          puts NOT_ACTIVE_MSG
           return { Status: :deploy_aborted }
         end
-        puts "Asserted active"
+        puts ACTIVE_ASSERT_MSG
         elbv2.shift_traffic(rule, step_size, old_target_group_arn, target_group_arn)
         puts "Shifted traffic on #{rule.rule_arn} to #{total}%"
       end
@@ -348,14 +352,14 @@ module Deployomat
       production_rules = elbv2.describe_rules(rule_ids)
 
       production_rules.each do |rule|
-        puts "Asserting active deploy"
+        puts ACTIVE_DEPLOY_MSG
         begin
           @config.assert_active
         rescue Aws::DynamoDB::Errors::ConditionalCheckFailedException
-          puts "No longer active deploy."
+          puts NOT_ACTIVE_MSG
           return { Status: :deploy_aborted }
         end
-        puts "Asserted active"
+        puts ACTIVE_ASSERT_MSG
         elbv2.coalesce(rule, target_group_arn)
         puts "Coalesced traffic on #{rule.rule_arn}"
       end
@@ -403,14 +407,14 @@ module Deployomat
     def call
       asg = Asg.new(@config)
 
-      puts "Asserting active deploy"
+      puts ACTIVE_DEPLOY_MSG
       begin
         @config.assert_active
       rescue Aws::DynamoDB::Errors::ConditionalCheckFailedException
-        puts "No longer active deploy."
+        puts NOT_ACTIVE_MSG
         return { Status: :deploy_aborted }
       end
-      puts "Asserted active"
+      puts ACTIVE_ASSERT_MSG
 
       deploy_asg = asg.get(@config.deploy_asg)
       puts "Allowing scale-in of new ASG #{deploy_asg.auto_scaling_group_name}"
