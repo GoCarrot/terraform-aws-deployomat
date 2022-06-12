@@ -56,3 +56,9 @@ variable "ami_owner_account_ids" {
 EOT
   default = null
 }
+
+variable "external_id" {
+  type        = string
+  description = "The ExternalId to use when assuming roles, if necessary."
+  default     = null
+}

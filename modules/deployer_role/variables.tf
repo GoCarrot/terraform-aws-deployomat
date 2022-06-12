@@ -54,3 +54,9 @@ variable "role_name" {
   description = "The name of the role created for performing deploys."
   default     = "Deployer"
 }
+
+variable "external_id" {
+  type        = string
+  description = "The ExternalId to use when assuming roles, if necessary."
+  default     = null
+}

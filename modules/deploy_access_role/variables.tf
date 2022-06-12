@@ -34,3 +34,9 @@ variable "tags" {
   description = "Tags to apply to all resources. Will be merged with Service=var.deployomat_service_name and deduplicated from default tags."
   default     = {}
 }
+
+variable "external_id" {
+  type        = string
+  description = "The ExternalId to use when assuming roles, if necessary."
+  default     = null
+}
