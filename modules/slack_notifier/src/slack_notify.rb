@@ -101,7 +101,7 @@ module SlackNotify
     status = detail['status']
     deployment_desc = "undeployment of #{input['ServiceName']} from #{input['AccountCanonicalSlug']} (Execution <https://console.aws.amazon.com/states/home?region=#{ENV['AWS_REGION']}#/executions/details/#{detail['executionArn']}|#{detail['name']}>)"
     if status == 'RUNNING'
-      { text: "Started undeploy of #{deployment_desc}" }
+      { text: "Started #{deployment_desc}" }
     elsif status == 'UPDATE'
       update = detail['updates']
       return { text: "Update from #{deployment_desc}\n\n#{update.join("\n")}"}
