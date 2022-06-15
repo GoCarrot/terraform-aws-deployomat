@@ -1,3 +1,14 @@
+## 0.2.16
+
+BUG FIXES:
+
+* Fixed language for starting undeployment slack notification.
+* Support external id when assuming roles ([#2](https://github.com/GoCarrot/terraform-aws-deployomat/pull/2))
+
+SPECIAL THANKS:
+
+* [@MrJoy](https://github.com/MrJoy)
+
 ## 0.2.15
 
 ENHANCEMENTS:
