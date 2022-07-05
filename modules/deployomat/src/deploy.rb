@@ -32,7 +32,7 @@ module Deployomat
 
     def_delegators :@config, :account_name, :service_name, :prefix, :deploy_id, :params
 
-    attr_reader :ami_id, :new_asg_name, :bake_time, :health_timeout, :new_tg_name
+    attr_reader :ami_id, :new_asg_name, :bake_time, :health_timeout, :new_tg_name,
                 :traffic_shift_per_step, :wait_per_step, :allow_undeploy, :automatic_undeploy_minutes
 
     GREATER_THAN_ZERO = %i[bake_time traffic_shift_per_step wait_per_step health_timeout].freeze
