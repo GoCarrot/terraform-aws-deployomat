@@ -1,3 +1,9 @@
+## 0.2.19
+
+BUG FIXES:
+
+* Limit length of ASG/target group names to avoid naming conflicts.
+
 ## 0.2.18
 
 BUG FIXES:
