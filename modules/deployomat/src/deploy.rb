@@ -32,7 +32,7 @@ module Deployomat
 
     def_delegators :@config, :account_name, :service_name, :prefix, :deploy_id, :params
 
-    attr_reader :ami_id, :new_asg_name, :bake_time, :health_timeout,
+    attr_reader :ami_id, :new_asg_name, :bake_time, :health_timeout, :new_tg_name
                 :traffic_shift_per_step, :wait_per_step, :allow_undeploy, :automatic_undeploy_minutes
 
     GREATER_THAN_ZERO = %i[bake_time traffic_shift_per_step wait_per_step health_timeout].freeze
@@ -41,7 +41,8 @@ module Deployomat
       deploy_config = deploy_config || {}
       @config = config
       @ami_id = ami_id
-      @new_asg_name = "#{service_name[0...15]}-#{Time.now.utc.strftime("%Y%m%dT%H%M%SZ")}"
+      @new_asg_name = "#{service_name}-#{Time.now.utc.strftime("%Y%m%dT%H%M%SZ")}"
+      @new_tg_name = "#{service_name[0...15]}-#{Time.now.utc.strftime("%Y%m%dT%H%M%SZ")}"
 
       # TODO: These should be configurable.
       @bake_time = deploy_config.fetch('BakeTime', DEFAULT_BAKE_TIME)
@@ -132,7 +133,7 @@ module Deployomat
       new_target_group_arn = nil
       if exemplar_tg_arn
         puts "Cloning target group..."
-        new_target_group = elbv2.clone_target_group(exemplar_tg_arn, new_asg_name)
+        new_target_group = elbv2.clone_target_group(exemplar_tg_arn, new_tg_name)
         new_target_group_arn = new_target_group.target_group_arn
         puts "Cloned target group #{new_target_group_arn}"
       end
