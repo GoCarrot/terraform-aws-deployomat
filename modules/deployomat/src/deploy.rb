@@ -41,7 +41,7 @@ module Deployomat
       deploy_config = deploy_config || {}
       @config = config
       @ami_id = ami_id
-      @new_asg_name = "#{service_name}-#{Time.now.utc.strftime("%Y%m%dT%H%M%SZ")}"
+      @new_asg_name = "#{service_name[0...15]}-#{Time.now.utc.strftime("%Y%m%dT%H%M%SZ")}"
 
       # TODO: These should be configurable.
       @bake_time = deploy_config.fetch('BakeTime', DEFAULT_BAKE_TIME)
