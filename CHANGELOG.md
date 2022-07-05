@@ -1,3 +1,9 @@
+## 0.2.21
+
+BUG FIXES:
+
+* Syntax error.
+
 ## 0.2.20
 
 BUG FIXES:
