@@ -1,3 +1,9 @@
+## 0.2.20
+
+BUG FIXES:
+
+* Limit length of target group name, but better.
+
 ## 0.2.19
 
 BUG FIXES:
