@@ -1,3 +1,9 @@
+## 0.2.17
+
+BUG FIXES:
+
+* Limit length of automatic undeploy rule name.
+
 ## 0.2.16
 
 BUG FIXES:
