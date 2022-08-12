@@ -1,3 +1,9 @@
+## 0.2.22
+
+ENHANCEMENTS:
+
+* Target group attributes (deregistration delay, stickiness, load balancing algorithm) are now supported.
+
 ## 0.2.21
 
 BUG FIXES:
