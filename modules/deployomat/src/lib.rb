@@ -591,6 +591,7 @@ module Deployomat
 
     def clone_target_group(target_group_arn, clone_name)
       new_tg_conf = @client.describe_target_groups(target_group_arns: [target_group_arn]).target_groups&.first&.to_h
+      new_tg_attributes = @client.describe_target_group_attributes(target_group_arn: target_group_arn).attributes
       REMOVE_TG_PARAMS.each { |param| new_tg_conf.delete(param) }
       tags = @client.describe_tags(resource_arns: [target_group_arn]).tag_descriptions&.first&.tags
 
@@ -602,9 +603,11 @@ module Deployomat
       end
 
       new_tg_conf[:tags] = tags
-      @client.create_target_group(
+      new_tg = @client.create_target_group(
         new_tg_conf.merge(name: clone_name.gsub(/[^A-Za-z0-9\-]/, '-')[0...32])
       ).target_groups.first
+      @client.modify_target_group_attributes(target_group_arn: new_tg.target_group_arn, attributes: new_tg_attributes)
+      return new_tg
     end
 
     def find_rule_with_target_in_listener(listener_arn, target_group)
