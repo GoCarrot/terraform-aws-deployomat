@@ -72,17 +72,17 @@ module Deployomat
     def reset_listeners(listeners, production_asg, deploy_asg)
       elbv2 = ElbV2.new(@config)
 
-      target_group = production_asg&.target_group_arns&.first || deploy_asg&.target_group_arns&.first
+      target_groups = [production_asg&.target_group_arns&.first, deploy_asg&.target_group_arns&.first].compact
 
-      production_rules = listeners.map do |(key, listener)|
+      production_rules = listeners.flat_map do |(key, listener)|
         if !listener
           listener = key
           key = nil
         end
 
-        puts "Identifying deploy rule for #{key} listener #{listener}"
-        elbv2.find_rule_with_target_in_listener(
-          listener, target_group
+        puts "Identifying deploy rules for #{key} listener #{listener}"
+        elbv2.find_rules_with_targets_in_listener(
+          listener, target_groups
         )
       end.compact
 

@@ -610,12 +610,11 @@ module Deployomat
       return new_tg
     end
 
-    def find_rule_with_target_in_listener(listener_arn, target_group)
+    def find_rules_with_targets_in_listener(listener_arn, target_groups)
       rules = @client.describe_rules(listener_arn: listener_arn).rules
 
-      # TODO: Support multiple rules per target group.
-      rules.find do |rule|
-        rule.actions.any? { |action| action.forward_config&.target_groups&.any? { |tg_conf| tg_conf.target_group_arn == target_group } }
+      rules.select do |rule|
+        rule.actions.any? { |action| action.forward_config&.target_groups&.any? { |tg_conf| target_groups.include?(tg_conf.target_group_arn) } }
       end
     end
 

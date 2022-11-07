@@ -81,8 +81,8 @@ module Deployomat
               key = nil
             end
 
-            rule = elbv2.find_rule_with_target_in_listener(listener_arn, tg_arn)
-            if rule
+            rules = elbv2.find_rules_with_targets_in_listener(listener_arn, [tg_arn])
+            rules.each do |rule|
               puts "Destroying rule in #{key} #{listener_arn} : #{rule.rule_arn}"
               elbv2.delete_rule(rule.rule_arn)
             end
