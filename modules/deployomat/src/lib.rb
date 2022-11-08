@@ -618,77 +618,88 @@ module Deployomat
       end
     end
 
-    def prepare_deploy_rule(listener_arn, production_tg_arn, exemplar_tg_arn, deploy_tg_arn)
+    def prepare_deploy_rules(listener_arn, production_tg_arn, exemplar_tg_arn, deploy_tg_arn)
       rules = @client.describe_rules(listener_arn: listener_arn).rules
-      production_rule = exemplar_rule = nil
+      production_rules = {}
+      exemplar_rules = {}
 
       # TODO: Support multiple rules per target group.
       rules.each do |rule|
         if rule.actions.any? { |action| action.forward_config&.target_groups&.any? { |tg_conf| tg_conf.target_group_arn == exemplar_tg_arn } }
-          exemplar_rule = rule
+          exemplar_rules[rule.priority.to_i - PRIORITY_OFFSET] = rule
         elsif rule.actions.any? { |action| action.forward_config && action.forward_config.target_groups.any? { |tg_conf| tg_conf.target_group_arn == production_tg_arn } }
-          production_rule = rule
+          production_rules[rule.priority.to_i] = rule
         end
       end
 
-      if !production_rule && exemplar_rule
-        tags = @client.describe_tags(resource_arns: [exemplar_rule.rule_arn]).tag_descriptions&.first&.tags
+      exemplar_rules.map do |(priority, exemplar_rule)|
+        production_rule = production_rules[priority]
 
-        managed = tags.find { |tag| tag[:key] == 'Managed' }
-        if managed
-          managed[:value] = MANAGED_TAG
-        else
-          tags.push({ key: 'Managed', value: MANAGED_TAG })
-        end
-        # Assert exemplar priority >= 40k
-        new_rule = exemplar_rule.to_h
-        new_rule[:priority] = (new_rule[:priority].to_i - PRIORITY_OFFSET).to_s
-        new_rule[:actions].each do |action|
-          if action[:target_group_arn] == exemplar_tg_arn
-            action[:target_group_arn] = deploy_tg_arn
+        if !production_rule
+          tags = @client.describe_tags(resource_arns: [exemplar_rule.rule_arn]).tag_descriptions&.first&.tags
+
+          managed = tags.find { |tag| tag[:key] == 'Managed' }
+          if managed
+            managed[:value] = MANAGED_TAG
+          else
+            tags.push({ key: 'Managed', value: MANAGED_TAG })
           end
+          # Assert exemplar priority >= 40k
+          new_rule = exemplar_rule.to_h
+          new_rule[:priority] = (new_rule[:priority].to_i - PRIORITY_OFFSET).to_s
+          new_rule[:actions].each do |action|
+            if action[:target_group_arn] == exemplar_tg_arn
+              action[:target_group_arn] = deploy_tg_arn
+            end
 
-          if action[:forward_config]
-            action[:forward_config][:target_groups].each do |group|
-              group[:target_group_arn] = deploy_tg_arn if group[:target_group_arn] == exemplar_tg_arn
+            if action[:forward_config]
+              action[:forward_config][:target_groups].each do |group|
+                group[:target_group_arn] = deploy_tg_arn if group[:target_group_arn] == exemplar_tg_arn
+              end
             end
           end
+          new_rule[:conditions].each do |condition|
+            condition.delete(:values)
+          end
+          new_rule[:listener_arn] = listener_arn
+          new_rule[:tags] = tags
+          REMOVE_RULE_PARAMS.each { |param| new_rule.delete(param) }
+
+          # TODO: This can fail if another deployomat creates a rule before us. We should
+          # clean up all resources and terminate in that case.
+          [:initial, @client.create_rule(new_rule).rules.first]
+        else
+          new_rule = production_rule.to_h
+          action = new_rule[:actions].find { |action| action.dig(:forward_config, :target_groups)&.any? { |tg_conf| tg_conf[:target_group_arn] == production_tg_arn } }
+          action.delete(:target_group_arn)
+
+          # TODO: Assert that the production rule only contains one forward to the known production tg.
+
+          action[:forward_config][:target_groups] = [
+            {
+              target_group_arn: production_tg_arn,
+              weight: 100
+            },
+            {
+              target_group_arn: deploy_tg_arn,
+              weight: 0
+            }
+          ]
+
+          [:update,  modify_rule(new_rule)]
         end
-        new_rule[:conditions].each do |condition|
-          condition.delete(:values)
-        end
-        new_rule[:listener_arn] = listener_arn
-        new_rule[:tags] = tags
-        REMOVE_RULE_PARAMS.each { |param| new_rule.delete(param) }
-
-        # TODO: This can fail if another deployomat creates a rule before us. We should
-        # clean up all resources and terminate in that case.
-        [:initial, @client.create_rule(new_rule).rules.first]
-      else
-        new_rule = production_rule.to_h
-        action = new_rule[:actions].find { |action| action.dig(:forward_config, :target_groups)&.any? { |tg_conf| tg_conf[:target_group_arn] == production_tg_arn } }
-        action.delete(:target_group_arn)
-
-        # TODO: Assert that the production rule only contains one forward to the known production tg.
-
-        action[:forward_config][:target_groups] = [
-          {
-            target_group_arn: production_tg_arn,
-            weight: 100
-          },
-          {
-            target_group_arn: deploy_tg_arn,
-            weight: 0
-          }
-        ]
-
-        [:update,  modify_rule(new_rule)]
       end
     end
 
     def shift_traffic(rule, amount, production_tg_arn, deploy_tg_arn)
       new_rule = rule.to_h
-      forwards = new_rule[:actions].find { |action| action.dig(:forward_config, :target_groups)&.any? { |tg_conf| tg_conf[:target_group_arn] == production_tg_arn } }.dig(:forward_config, :target_groups)
+      forwards = new_rule[:actions].find { |action| action.dig(:forward_config, :target_groups)&.any? { |tg_conf| tg_conf[:target_group_arn] == production_tg_arn } }&.dig(:forward_config, :target_groups)
+
+      if forwards.nil? || forwards.length < 2
+        puts "Rule #{new_rule[:rule_arn]} not configured for traffic shift, skipping."
+        return
+      end
+
       production_forward = forwards.find { |tg_conf| tg_conf[:target_group_arn] == production_tg_arn }
       deploy_forward = forwards.find { |tg_conf| tg_conf[:target_group_arn] == deploy_tg_arn }
 
@@ -702,10 +713,17 @@ module Deployomat
 
     def coalesce(rule, production_tg_arn)
       new_rule = rule.to_h
-      forwards = new_rule[:actions].find { |action| action.dig(:forward_config, :target_groups)&.any? { |tg_conf| tg_conf[:target_group_arn] == production_tg_arn } }.dig(:forward_config)
+      forwards = new_rule[:actions].find { |action| action.dig(:forward_config, :target_groups)&.any? { |tg_conf| tg_conf[:target_group_arn] == production_tg_arn } }&.dig(:forward_config)
+
+      if forwards.nil?
+        puts "Rule #{new_rule[:rule_arn]} not configured for traffic shift, skipping."
+        return false
+      end
+
       forwards[:target_groups] = [{ target_group_arn: production_tg_arn, weight: 100 }]
 
       modify_rule(new_rule)
+      true
     end
 
     def destroy_tg(target_group_arn)

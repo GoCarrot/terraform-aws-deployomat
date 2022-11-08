@@ -95,7 +95,11 @@ module Deployomat
       if production_asg
         puts "Coalescing on production asg #{production_asg.auto_scaling_group_name}"
         production_rules.each do |rule|
-          elbv2.coalesce(rule, production_asg.target_group_arns.first)
+          if !elbv2.coalesce(rule, production_asg.target_group_arns.first)
+            puts "Could not coalesece rule #{rule.rule_arn}. Destroying instead."
+            elbv2.delete_rule(rule.rule_arn)
+            puts "Destroyed #{rule.rule_arn}"
+          end
         end
         puts "Coalesced."
         return :wait
