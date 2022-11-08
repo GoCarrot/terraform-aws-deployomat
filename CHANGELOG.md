@@ -1,3 +1,9 @@
+## 0.3.0
+
+ENHANCEMENTS:
+
+* Deploy, undeploy, and cancel now support services which have multiple load balancer rules directing traffic to them.
+
 ## 0.2.22
 
 ENHANCEMENTS:
