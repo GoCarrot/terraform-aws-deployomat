@@ -1,3 +1,9 @@
+## 0.3.1
+
+BUG FIXES:
+
+* Cancelling a deploy of a web service during its Bake period now correctly rolls back to the previous production deploy.
+
 ## 0.3.0
 
 ENHANCEMENTS:
