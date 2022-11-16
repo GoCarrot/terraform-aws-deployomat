@@ -713,14 +713,24 @@ module Deployomat
 
     def coalesce(rule, production_tg_arn)
       new_rule = rule.to_h
-      forwards = new_rule[:actions].find { |action| action.dig(:forward_config, :target_groups)&.any? { |tg_conf| tg_conf[:target_group_arn] == production_tg_arn } }&.dig(:forward_config)
+      forward = new_rule[:actions].find { |action| action[:type] == 'forward' }
 
-      if forwards.nil?
+      if forward.nil?
         puts "Rule #{new_rule[:rule_arn]} not configured for traffic shift, skipping."
         return false
       end
 
-      forwards[:target_groups] = [{ target_group_arn: production_tg_arn, weight: 100 }]
+      new_config = [{ target_group_arn: production_tg_arn, weight: 100 }]
+
+      forward.delete(:target_group_arn)
+      # If we already have a forward config, we only want to update the target groups on it, retaining
+      # the target_group_stickiness_config. If we have no forward config then we need to set the
+      # full thing.
+      if forward.dig(:forward_config, :target_groups)
+        forward[:forward_config][:target_groups] = new_config
+      else
+        forward[:forward_config] = { target_groups: new_config }
+      end
 
       modify_rule(new_rule)
       true
