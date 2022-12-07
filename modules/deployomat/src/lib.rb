@@ -435,7 +435,7 @@ module Deployomat
 
   private
     def rule_name
-      @rule_name ||= "#{@config.primary_key[0...22]}-undeploy"
+      @rule_name ||= "#{@config.primary_key[0...54]}-undeploy"
     end
   end
 
