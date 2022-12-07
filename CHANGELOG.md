@@ -1,3 +1,9 @@
+## 0.3.2
+
+ENHANCEMENTS:
+
+* Permit longer names for automatic undeployment rules to minimize conflicts.
+
 ## 0.3.1
 
 BUG FIXES:
