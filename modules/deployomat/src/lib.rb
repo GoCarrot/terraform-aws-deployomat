@@ -552,7 +552,20 @@ module Deployomat
         new_asg_parameters[:placement_group] = template_asg.placement_group
       end
 
-      @client.create_auto_scaling_group(new_asg_parameters)
+      retry_count = 0
+      begin
+        @client.create_auto_scaling_group(new_asg_parameters)
+      rescue Aws::AutoScaling::Errors::AlreadyExistsFault
+        # If we got here and never retried, we are in trouble
+        # If we got here because a retry succeeded, we're okay.
+        raise if retry_count == 0
+      rescue Aws::AutoScaling::Errors::ServiceError => exc
+        puts "Error cloning ASG to #{new_asg_name}. #{exc.class.name} #{exc.message}"
+        retry_count += 1
+        raise if retry_count >= 3
+        puts "Retrying #{retry_count}"
+        sleep 2 ** retry_count
+      end
 
       if template_asg.warm_pool_configuration
         @client.put_warm_pool(
