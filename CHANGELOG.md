@@ -1,3 +1,9 @@
+## 0.3.3
+
+ENHANCEMENTS:
+
+* Retry creating AutoScaling Group.
+
 ## 0.3.2
 
 ENHANCEMENTS:
