@@ -567,6 +567,14 @@ module Deployomat
         sleep 2 ** retry_count
       end
 
+      if template_asg.enabled_metrics && template_asg.enabled_metrics.length > 0
+        @client.enable_metrics_collection(
+          auto_scaling_group_name: name,
+          granularity: template_asg.enabled_metrics[0].granularity,
+          metrics: template_asg.enabled_metrics.map(&:metric)
+        )
+      end
+
       if template_asg.warm_pool_configuration
         @client.put_warm_pool(
           auto_scaling_group_name: name,

@@ -132,7 +132,8 @@ data "aws_iam_policy_document" "allow-deploy" {
       "autoscaling:AttachLoadBalancerTargetGroups",
       "autoscaling:PutScalingPolicy",
       "autoscaling:PutWarmPool",
-      "autoscaling:UpdateAutoScalingGroup"
+      "autoscaling:UpdateAutoScalingGroup",
+      "autoscaling:EnableMetricsCollection"
     ]
 
     resources = [
