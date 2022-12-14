@@ -1,3 +1,9 @@
+## 0.3.4
+
+ENHANCEMENTS:
+
+* Now supports AutoScaling Group metrics.
+
 ## 0.3.3
 
 ENHANCEMENTS:
