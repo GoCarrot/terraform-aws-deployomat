@@ -560,7 +560,7 @@ module Deployomat
         # If we got here because a retry succeeded, we're okay.
         raise if retry_count == 0
       rescue Aws::AutoScaling::Errors::ServiceError => exc
-        puts "Error cloning ASG to #{new_asg_name}. #{exc.class.name} #{exc.message}"
+        puts "Error cloning ASG to #{name}. #{exc.class.name} #{exc.message}"
         retry_count += 1
         raise if retry_count >= 3
         puts "Retrying #{retry_count}"
