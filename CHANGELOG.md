@@ -1,3 +1,9 @@
+## 0.3.5
+
+BUG FIXES:
+
+* Fix exception when retrying ASG creation.
+
 ## 0.3.4
 
 ENHANCEMENTS:
