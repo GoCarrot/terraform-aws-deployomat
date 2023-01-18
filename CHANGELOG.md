@@ -1,3 +1,9 @@
+## 0.3.6
+
+BUG FIXES:
+
+* Actually retry ASG creation.
+
 ## 0.3.5
 
 BUG FIXES:
