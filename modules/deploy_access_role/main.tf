@@ -197,7 +197,8 @@ data "aws_iam_policy_document" "allow-deploy" {
   statement {
     actions = [
       "elasticloadbalancing:CreateRule",
-      "elasticloadbalancing:CreateTargetGroup"
+      "elasticloadbalancing:CreateTargetGroup",
+      "elasticloadbalancing:AddTags"
     ]
 
     resources = [
