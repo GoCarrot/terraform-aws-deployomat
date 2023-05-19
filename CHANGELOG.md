@@ -1,3 +1,9 @@
+## 0.3.7
+
+ENHANCEMENTS:
+
+* Add elasticloadbalancing:AddTags IAM permission to deploy_access_role to comply with upcoming AWS security changes.
+
 ## 0.3.6
 
 BUG FIXES:
