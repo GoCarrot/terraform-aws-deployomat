@@ -46,7 +46,9 @@ module SlackNotify
         return { text: nil } if skip_notifications
         { text: "Completed #{deployment_desc}" }
       elsif out_status == 'deploy_aborted'
-        { text: "Aborted #{deployment_desc}" }
+        text = "Aborted #{deployment_desc}"
+        text = "#{text}\n\n#{output['Error'].join("\n")}" if output.key?('Error')
+        { text: text }
       elsif out_status == 'fail'
         { text: "Failed #{deployment_desc}\n\n#{output['Error'].join("\n")}" }
       else
