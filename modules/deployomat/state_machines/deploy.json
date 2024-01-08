@@ -393,7 +393,8 @@
       "Type": "Pass",
       "End": true,
       "Parameters": {
-        "Status": "deploy_aborted"
+        "Status": "deploy_aborted",
+        "Error": "Deploy was cancelled due to a superseding deploy."
       }
     }
   }
