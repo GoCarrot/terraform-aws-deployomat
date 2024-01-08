@@ -1,3 +1,9 @@
+## 0.3.9
+
+ENHANCEMENTS:
+
+* Add additional messaging around a deploy being cancelled for a superseding deploy.
+
 ## 0.3.8
 
 ENHANCEMENTS:
