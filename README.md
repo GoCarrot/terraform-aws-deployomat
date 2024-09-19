@@ -395,4 +395,14 @@ Additional deploy options may be configured under a `DeployConfig` in the input.
 - `DeployConfig.AllowUndeploy` controls if the deployed service may be undeployed. If left unspecified, this will default to true unless the environment configured for the account is "production".
 - `DeployConfig.AutomaticUndeployMinutes` enables automatic undeployment of the service. Once the given number of minutes elapses after a successful deployment Deployomat will automatically undeploy the service. It is an error to provide this configuration if the service cannot be undeployed.
 
-A deploy may be cancelled by starting an execution of `cancel_sfn.arn`. The input is a JSON document containning AccountCanonicalSlug and ServiceName keys. For example, using the aws cli, `aws stepfunctions start-execution --start-machine-arn <CANCEL_SFN_ARN> --input '{"AccountCanonicalSlug":"workload-dev-0001", "ServiceName": "example"}'`
+### Cancelling Deploys
+
+A deploy may be cancelled by starting an execution of `cancel_sfn.arn`. The input is a JSON document containning AccountCanonicalSlug and ServiceName keys. For example, using the aws cli, `aws stepfunctions start-execution --start-machine-arn <CANCEL_SFN_ARN> --input '{"AccountCanonicalSlug":"workload-dev-0001", "ServiceName": "example"}'` A cancelled deploy will immediately direct all traffic to the previously deployed version of the service and tear down the in-progress deploy.
+
+### Undeploying
+
+Undeploying is the act of tearing down/decommissioning all running servers and related configuration for a running service. After undeploying a service, there will be nothing pertaining to the service still managed by Deployomat. To completely remove a service, destroy the relevant serviceomat module after undeploying with Deployomat.
+
+Deployomat operates with a "lift the safety then press the button" approach to undeployments. Before a service can be undeployed, it must first be deployed with `DeployConfig.AllowUndeploy` set to true. Note that if the account the service is deployed in has an environment other than "production" then `DeployConfig.AllowUndeploy` will default to true for all deployments, so a service can be directly undeployed. If the service is in an account with an environment set to "production", or if `DeployConfig.AllowUndeploy` has been explicitly set to false, then the safety is engaged and a deploy with `DeployConfig.AllowUndeploy` set to true must be done first.
+
+Once the safety is lifted, a service may be undeployed by starting an execution of `undeploy_sfn.arn`. The input is a JSON document containning AccountCanonicalSlug and ServiceName keys. For example, using the aws cli, `aws stepfunctions start-execution --start-machine-arn <UNDEPLOY_SFN_ARN> --input '{"AccountCanonicalSlug":"workload-dev-0001", "ServiceName": "example"}'`.
