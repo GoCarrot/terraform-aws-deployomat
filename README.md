@@ -397,7 +397,7 @@ Additional deploy options may be configured under a `DeployConfig` in the input.
 
 ### Cancelling Deploys
 
-A deploy may be cancelled by starting an execution of `cancel_sfn.arn`. The input is a JSON document containning AccountCanonicalSlug and ServiceName keys. For example, using the aws cli, `aws stepfunctions start-execution --start-machine-arn <CANCEL_SFN_ARN> --input '{"AccountCanonicalSlug":"workload-dev-0001", "ServiceName": "example"}'` A cancelled deploy will immediately direct all traffic to the previously deployed version of the service and tear down the in-progress deploy.
+A deploy may be cancelled by starting an execution of `cancel_sfn.arn`. The input is a JSON document containning AccountCanonicalSlug and ServiceName keys. For example, using the aws cli, `aws stepfunctions start-execution --state-machine-arn <CANCEL_SFN_ARN> --input '{"AccountCanonicalSlug":"workload-dev-0001", "ServiceName": "example"}'` A cancelled deploy will immediately direct all traffic to the previously deployed version of the service and tear down the in-progress deploy.
 
 ### Undeploying
 
@@ -405,4 +405,4 @@ Undeploying is the act of tearing down/decommissioning all running servers and r
 
 Deployomat operates with a "lift the safety then press the button" approach to undeployments. Before a service can be undeployed, it must first be deployed with `DeployConfig.AllowUndeploy` set to true. Note that if the account the service is deployed in has an environment other than "production" then `DeployConfig.AllowUndeploy` will default to true for all deployments, so a service can be directly undeployed. If the service is in an account with an environment set to "production", or if `DeployConfig.AllowUndeploy` has been explicitly set to false, then the safety is engaged and a deploy with `DeployConfig.AllowUndeploy` set to true must be done first.
 
-Once the safety is lifted, a service may be undeployed by starting an execution of `undeploy_sfn.arn`. The input is a JSON document containning AccountCanonicalSlug and ServiceName keys. For example, using the aws cli, `aws stepfunctions start-execution --start-machine-arn <UNDEPLOY_SFN_ARN> --input '{"AccountCanonicalSlug":"workload-dev-0001", "ServiceName": "example"}'`.
+Once the safety is lifted, a service may be undeployed by starting an execution of `undeploy_sfn.arn`. The input is a JSON document containning AccountCanonicalSlug and ServiceName keys. For example, using the aws cli, `aws stepfunctions start-execution --state-machine-arn <UNDEPLOY_SFN_ARN> --input '{"AccountCanonicalSlug":"workload-dev-0001", "ServiceName": "example"}'`.

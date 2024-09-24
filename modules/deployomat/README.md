@@ -97,4 +97,4 @@ module "slack_notify" {
 
 Once deployomat is set up, a deploy can be triggered by starting an execution of `deploy_sfn.arn`. The minimal input is a JSON document containing AccountName, ServiceName, and AmiId keys. For example, using the aws cli, `aws stepfunctions start-execution --state-machine-arn <DEPLOY_SFN_ARN> --input '{"AccountName":"workload-dev-0001", "ServiceName":"example", "AmiId": "ami-xxxx"}'`
 
-A deploy may be cancelled by starting an execution of `cancel_sfn.arn`. The input is a JSON document containning AccountName and ServiceName keys. For example, using the aws cli, `aws stepfunctions start-execution --start-machine-arn <CANCEL_SFN_ARN> --input '{"AccountName":"workload-dev-0001", "ServiceName": "example"}'`
+A deploy may be cancelled by starting an execution of `cancel_sfn.arn`. The input is a JSON document containning AccountName and ServiceName keys. For example, using the aws cli, `aws stepfunctions start-execution --state-machine-arn <CANCEL_SFN_ARN> --input '{"AccountName":"workload-dev-0001", "ServiceName": "example"}'`
