@@ -34,8 +34,9 @@ module Deployomat
     def call
       production_asg_name = @config.production_asg
       if production_asg_name.nil? || production_asg_name.empty?
-        puts "No production ASG of #{service_name} in #{account_name} to undeploy, not deployed?"
-        return { Status: :complete }
+        error = "No production ASG of #{service_name} in #{account_name} to undeploy, not deployed?"
+        puts error
+        return { Status: :fail, Error: [error] }
       end
 
       if !(@config.undeploying? || @config.undeployable?)
@@ -60,7 +61,9 @@ module Deployomat
       elbv2 = ElbV2.new(@config)
 
       if !production_asg
-        puts "Could not find production ASG #{production_asg_name}. Old entry?"
+        error = "Could not find production ASG #{production_asg_name}. Old entry?"
+        puts error
+        return { Status: :fail, Error: [error] }
       end
 
       listeners = begin
