@@ -1,3 +1,9 @@
+## 0.3.10
+
+ENHANCEMENTS:
+
+* Undeploy will now report failure if it was unable to process a requested undeploy because the service is not deployed or the AutoScaling Group could not be found.
+
 ## 0.3.9
 
 ENHANCEMENTS:
