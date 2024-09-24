@@ -123,7 +123,7 @@ module Deployomat
       @params = Parameters.new(deploy_id)
       account_info = begin
         JSON.parse(params.get("/omat/account_registry/#{@account_canonical_slug}"), symbolize_names: true)
-      rescue Aws::SSM::ParameterNotFound
+      rescue Aws::SSM::Errors::ParameterNotFound
         raise "Unable to locate account information for #{@account_canonical_slug}"
       end
 
