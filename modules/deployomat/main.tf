@@ -400,14 +400,14 @@ resource "aws_lambda_function" "deployomat-deploy" {
 
   environment {
     variables = {
-      DEPLOYOMAT_META_ROLE_ARN = var.deployomat_meta_role_arn
-      DEPLOYOMAT_ENV           = local.environment
-      DEPLOYOMAT_TABLE         = aws_dynamodb_table.state.name
-      DEPLOYOMAT_SERVICE_NAME  = local.service
-      UNDEPLOY_SFN_ARN         = aws_sfn_state_machine.undeploy.arn
-      UNDEPLOYER_ROLE_ARN      = aws_iam_role.automatic-undeployer.arn
+      DEPLOYOMAT_META_ROLE_ARN     = var.deployomat_meta_role_arn
+      DEPLOYOMAT_ENV               = local.environment
+      DEPLOYOMAT_TABLE             = aws_dynamodb_table.state.name
+      DEPLOYOMAT_SERVICE_NAME      = local.service
+      UNDEPLOY_SFN_ARN             = aws_sfn_state_machine.undeploy.arn
+      UNDEPLOYER_ROLE_ARN          = aws_iam_role.automatic-undeployer.arn
       DEPLOYOMAT_AMI_SEARCH_OWNERS = local.ami_owner_account_ids
-      ROLE_EXTERNAL_ID         = var.external_id
+      ROLE_EXTERNAL_ID             = var.external_id
     }
   }
 
