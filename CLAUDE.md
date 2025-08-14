@@ -179,11 +179,16 @@ Remember: CHANGELOG.md is for module consumers, not maintainers.
 2. Be mindful of cross-account trust relationships
 3. Test permission changes in development first
 
-## Git Commit Guidelines
+## Git Commit and Pull Request Guidelines
 
-### Every Commit Must Capture Human-Claude Interaction
+### CRITICAL: Every Commit AND Pull Request Must Include Human-Claude Interaction Logs
 
-**The commit template below is MANDATORY for ALL commits** - infrastructure changes, Ruby code updates, state machine modifications, documentation, everything. This captures how humans effectively guide Claude.
+**Human-Claude interaction logs are MANDATORY for:**
+- ✅ **ALL commits** - Every single commit must include the verbatim human prompts that led to it
+- ✅ **ALL pull requests** - PR descriptions must include the interaction log for PR creation
+- ✅ **Amended commits** - If you forget the log, amend the commit immediately when reminded
+
+**Why this matters:** These logs are critical for helping other operators learn how to work effectively with Claude. They provide invaluable context about human guidance and decision-making.
 
 ### When to Commit
 Only commit when:
@@ -254,3 +259,32 @@ EOF
 ```
 
 **Note**: Avoid `git add -A` when multiple Claudes work in parallel - add only YOUR files.
+
+### Pull Request Template
+When creating a pull request, ALWAYS include:
+1. Clear summary of changes
+2. Reference to any related issues (e.g., "Fixes #5")
+3. Test plan with checkboxes
+4. **MANDATORY: Human-Claude Interaction Log section** showing the prompts that led to the PR
+5. Tag reviewers as requested by humans
+6. Include review date in title if requested (e.g., "[2025-08-28] Title")
+
+Example PR description:
+```markdown
+## Summary
+[What changed and why]
+
+## Changes
+[List of specific changes]
+
+## Test Plan
+- [x] Tests pass
+- [ ] Manual testing steps
+
+## Human-Claude Interaction Log for PR Creation
+### Human prompts (VERBATIM):
+1. "[Exact prompt that led to PR]"
+   → Claude: [What Claude did]
+
+🤖 Generated with [Claude Code](https://claude.ai/code)
+```
