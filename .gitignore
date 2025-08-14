@@ -2,3 +2,14 @@
 *.tfplan
 modules/deployomat/build
 modules/slack_notifier/build
+
+# RSpec test status persistence
+spec/examples.txt
+modules/*/spec/examples.txt
+
+# SimpleCov code coverage
+coverage/
+
+# Bundler vendor directory
+vendor/bundle
+.bundle/
