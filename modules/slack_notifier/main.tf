@@ -148,7 +148,7 @@ resource "aws_cloudwatch_event_rule" "deploy-run" {
   event_pattern = jsonencode({
     source      = compact(["aws.states", var.custom_update_event_source]),
     detail-type = compact(["Step Functions Execution Status Change", var.custom_update_event_detail_type]),
-    resources   = [ for arn in compact([var.deploy_sfn.arn, var.undeploy_sfn.arn, var.cancel_sfn != null ? var.cancel_sfn.arn : null]) : { prefix = "${replace(arn, ":stateMachine:", ":execution:")}:" } ]
+    resources   = [for arn in compact([var.deploy_sfn.arn, var.undeploy_sfn.arn, var.cancel_sfn != null ? var.cancel_sfn.arn : null]) : { prefix = "${replace(arn, ":stateMachine:", ":execution:")}:" }]
   })
 
   tags = local.tags

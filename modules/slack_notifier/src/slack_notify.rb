@@ -31,33 +31,34 @@ module SlackNotify
     skip_notifications = input.dig('DeployConfig', 'SkipNotifications')
 
     status = detail['status']
-    deployment_desc = "deployment of #{input['ServiceName']} to #{input['AccountCanonicalSlug']} (AMI <https://console.aws.amazon.com/ec2/v2/home?region=#{ENV['AWS_REGION']}#ImageDetails:imageId=#{input['AmiId']}|#{input['AmiId']}>, Execution <https://console.aws.amazon.com/states/home?region=#{ENV['AWS_REGION']}#/executions/details/#{detail['executionArn']}|#{detail['name']}>)"
+    deployment_base = "Deploy #{input['ServiceName']} to #{input['AccountCanonicalSlug']}"
+    deployment_details = "(AMI <https://console.aws.amazon.com/ec2/v2/home?region=#{ENV['AWS_REGION']}#ImageDetails:imageId=#{input['AmiId']}|#{input['AmiId']}>, Execution <https://console.aws.amazon.com/states/home?region=#{ENV['AWS_REGION']}#/executions/details/#{detail['executionArn']}|#{detail['name']}>)"
     if status == 'RUNNING'
       return { text: nil } if skip_notifications
-      { text: "Started #{deployment_desc}" }
+      { text: "#{deployment_base}: Started #{deployment_details}" }
     elsif status == 'UPDATE'
       return { text: nil } if skip_notifications
       update = detail['updates']
-      return { text: "Update from #{deployment_desc}\n\n#{update.join("\n")}"}
+      return { text: "#{deployment_base}: Update #{deployment_details}\n\n#{update.join("\n")}"}
     elsif status == 'SUCCEEDED'
       output = JSON.parse(detail['output'])
       out_status = output['Status']
       if out_status == 'complete'
         return { text: nil } if skip_notifications
-        { text: "Completed #{deployment_desc}" }
+        { text: "#{deployment_base}: Completed #{deployment_details}" }
       elsif out_status == 'deploy_aborted'
-        text = "Aborted #{deployment_desc}"
+        text = "#{deployment_base}: Aborted #{deployment_details}"
         text = "#{text}\n\n#{output['Error'].join("\n")}" if output.key?('Error')
         { text: text }
       elsif out_status == 'fail'
-        { text: "Failed #{deployment_desc}\n\n#{output['Error'].join("\n")}" }
+        { text: "#{deployment_base}: Failed #{deployment_details}\n\n#{output['Error'].join("\n")}" }
       else
-        { text: "Unknown success result from #{deployment_desc}: #{out_status}" }
+        { text: "#{deployment_base}: Unknown success result #{deployment_details}: #{out_status}" }
       end
     elsif status == 'FAILED'
-      { text: "Failed #{deployment_desc}" }
+      { text: "#{deployment_base}: Failed #{deployment_details}" }
     else
-      { text: "#{status}: #{deployment_desc} -- LIKELY IN AN INCONSISTENT STATE!!!" }
+      { text: "#{deployment_base}: #{status} #{deployment_details} -- LIKELY IN AN INCONSISTENT STATE!!!" }
     end
   end
 
@@ -68,31 +69,32 @@ module SlackNotify
     skip_notifications = input.dig('DeployConfig', 'SkipNotifications')
 
     status = detail['status']
-    deployment_desc = "cancelling deployment of #{input['ServiceName']} to #{input['AccountCanonicalSlug']} (Execution <https://console.aws.amazon.com/states/home?region=#{ENV['AWS_REGION']}#/executions/details/#{detail['executionArn']}|#{detail['name']}>)"
+    cancel_base = "Cancel deployment #{input['ServiceName']} to #{input['AccountCanonicalSlug']}"
+    cancel_details = "(Execution <https://console.aws.amazon.com/states/home?region=#{ENV['AWS_REGION']}#/executions/details/#{detail['executionArn']}|#{detail['name']}>)"
     if status == 'RUNNING'
       return { text: nil } if skip_notifications
-      { text: "Started #{deployment_desc}" }
+      { text: "#{cancel_base}: Started #{cancel_details}" }
     elsif status == 'UPDATE'
       return { text: nil } if skip_notifications
       update = detail['updates']
-      return { text: "Update from #{deployment_desc}\n\n#{update.join("\n")}"}
+      return { text: "#{cancel_base}: Update #{cancel_details}\n\n#{update.join("\n")}"}
     elsif status == 'SUCCEEDED'
       output = JSON.parse(detail['output'])
       out_status = output['Status']
       if out_status == 'complete'
         return { text: nil } if skip_notifications
-        { text: "Completed #{deployment_desc}" }
+        { text: "#{cancel_base}: Completed #{cancel_details}" }
       elsif out_status == 'deploy_aborted'
-        { text: "Aborted d#{deployment_desc}" }
+        { text: "#{cancel_base}: Aborted #{cancel_details}" }
       elsif out_status == 'fail'
-        { text: "Failed #{deployment_desc}\n\n#{output['Error'].join("\n")}" }
+        { text: "#{cancel_base}: Failed #{cancel_details}\n\n#{output['Error'].join("\n")}" }
       else
-        { text: "Unknown success result from #{deployment_desc}: #{out_status}" }
+        { text: "#{cancel_base}: Unknown success result #{cancel_details}: #{out_status}" }
       end
     elsif status == 'FAILED'
-      { text: "Failed #{deployment_desc}" }
+      { text: "#{cancel_base}: Failed #{cancel_details}" }
     else
-      { text: "#{status}: #{deployment_desc} -- LIKELY IN AN INCONSISTENT STATE!!!" }
+      { text: "#{cancel_base}: #{status} #{cancel_details} -- LIKELY IN AN INCONSISTENT STATE!!!" }
     end
   end
 
@@ -101,17 +103,18 @@ module SlackNotify
     input = JSON.parse(detail['input'])
 
     status = detail['status']
-    deployment_desc = "undeployment of #{input['ServiceName']} from #{input['AccountCanonicalSlug']} (Execution <https://console.aws.amazon.com/states/home?region=#{ENV['AWS_REGION']}#/executions/details/#{detail['executionArn']}|#{detail['name']}>)"
+    undeploy_base = "Undeploy #{input['ServiceName']} from #{input['AccountCanonicalSlug']}"
+    undeploy_details = "(Execution <https://console.aws.amazon.com/states/home?region=#{ENV['AWS_REGION']}#/executions/details/#{detail['executionArn']}|#{detail['name']}>)"
     if status == 'RUNNING'
-      { text: "Started #{deployment_desc}" }
+      { text: "#{undeploy_base}: Started #{undeploy_details}" }
     elsif status == 'UPDATE'
       update = detail['updates']
-      return { text: "Update from #{deployment_desc}\n\n#{update.join("\n")}"}
+      return { text: "#{undeploy_base}: Update #{undeploy_details}\n\n#{update.join("\n")}"}
     elsif status == 'SUCCEEDED'
       output = JSON.parse(detail['output'])
       out_status = output['Status']
       if out_status == 'complete'
-        text = "Completed #{deployment_desc}"
+        text = "#{undeploy_base}: Completed #{undeploy_details}"
         if ENV['UNDEPLOY_TECHNO'] == 'true'
           { text: text, blocks: [
             {type: "section", text: { type: "mrkdwn", text: text }},
@@ -121,14 +124,14 @@ module SlackNotify
           { text: text }
         end
       elsif out_status == 'fail'
-        { text: "Failed #{deployment_desc}\n\n#{output['Error'].join("\n")}" }
+        { text: "#{undeploy_base}: Failed #{undeploy_details}\n\n#{output['Error'].join("\n")}" }
       else
-        { text: "Unknown success result for #{deployment_desc}: #{out_status}" }
+        { text: "#{undeploy_base}: Unknown success result #{undeploy_details}: #{out_status}" }
       end
     elsif status == 'FAILED'
-      { text: "Failed #{deployment_desc}" }
+      { text: "#{undeploy_base}: Failed #{undeploy_details}" }
     else
-      { text: "#{status}: #{deployment_desc} -- LIKELY IN AN INCONSISTENT STATE" }
+      { text: "#{undeploy_base}: #{status} #{undeploy_details} -- LIKELY IN AN INCONSISTENT STATE" }
     end
   end
 

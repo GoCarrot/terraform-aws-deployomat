@@ -347,6 +347,10 @@ module Deployomat
     end
 
     def create_launch_template_version(launch_template_id, ami_id)
+      # If block size on the image is greater than our specified size, bump
+      # our size so the deploy can happen.
+      #
+      # TODO: Let the dev know.
       @client.create_launch_template_version(
         launch_template_data: {
           image_id: ami_id

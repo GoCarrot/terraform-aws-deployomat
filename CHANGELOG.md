@@ -1,3 +1,9 @@
+## Unreleased
+
+ENHANCEMENTS:
+
+* Improved Slack notification message format for easier sorting and pairing of deployment messages. Messages now follow the pattern "Deploy ServiceName to Account: Status" instead of "Status deployment of ServiceName to Account" ([#5](https://github.com/GoCarrot/terraform-aws-deployomat/issues/5))
+
 ## 0.3.10
 
 ENHANCEMENTS:

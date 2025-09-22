@@ -1,0 +1,109 @@
+version: 2.1
+
+orbs:
+  ruby: circleci/ruby@2.1.0
+  terraform: circleci/terraform@3.2.0
+
+jobs:
+  test:
+    docker:
+      - image: cimg/ruby:2.7-node  # Ruby 2.7 to match Lambda runtime
+    
+    steps:
+      - checkout
+      
+      # Ruby dependencies
+      - ruby/install-deps:
+          bundler-version: '2.3.27'
+      
+      # Install Terraform
+      - terraform/install:
+          terraform_version: "1.5.0"
+      
+      # Terraform checks
+      - run:
+          name: Terraform Format Check
+          command: terraform fmt -check -recursive
+      
+      - run:
+          name: Terraform Validation
+          command: |
+            terraform init -backend=false
+            terraform validate
+      
+      # Ruby linting (continue on error for now)
+      - run:
+          name: Run RuboCop
+          command: bundle exec rubocop modules --display-cop-names || true
+      
+      # Run tests with coverage
+      - run:
+          name: Run RSpec Tests
+          command: |
+            mkdir -p test-results/rspec
+            bundle exec rspec \
+              --format documentation \
+              --format RspecJunitFormatter \
+              --out test-results/rspec/results.xml \
+              --format html \
+              --out test-results/rspec/results.html
+      
+      # Store test results and artifacts
+      - store_test_results:
+          path: test-results
+      
+      - store_artifacts:
+          path: test-results
+          destination: test-results
+      
+      - store_artifacts:
+          path: coverage
+          destination: coverage
+
+  # Validate all module examples
+  validate-examples:
+    docker:
+      - image: cimg/base:stable
+    
+    steps:
+      - checkout
+      
+      - terraform/install:
+          terraform_version: "1.5.0"
+      
+      - run:
+          name: Validate Example Configurations
+          command: |
+            # Check if examples directory exists
+            if [ -d "examples" ]; then
+              for example in examples/*/; do
+                if [ -f "$example/main.tf" ]; then
+                  echo "Validating $example"
+                  cd "$example"
+                  terraform init -backend=false
+                  terraform validate
+                  cd -
+                fi
+              done
+            else
+              echo "No examples directory found"
+            fi
+
+workflows:
+  version: 2
+  
+  test_and_validate:
+    jobs:
+      - test:
+          filters:
+            branches:
+              ignore: none  # Run on all branches
+      
+      - validate-examples:
+          requires:
+            - test
+          filters:
+            branches:
+              only: 
+                - main
+                - master
