@@ -1,7 +1,10 @@
-## Unreleased
+## 0.3.11
+
+v0.3.10 was never tagged on the remote, so this release also ships the 0.3.10 changes below and the Slack message format change.
 
 ENHANCEMENTS:
 
+* Allow AWS provider 6.x. The `aws` constraint is now `>= 3, < 7` in every module.
 * Improved Slack notification message format for easier sorting and pairing of deployment messages. Messages now follow the pattern "Deploy ServiceName to Account: Status" instead of "Status deployment of ServiceName to Account" ([#5](https://github.com/GoCarrot/terraform-aws-deployomat/issues/5))
 
 ## 0.3.10
