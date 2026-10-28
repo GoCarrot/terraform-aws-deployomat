@@ -181,15 +181,6 @@ Remember: CHANGELOG.md is for module consumers, not maintainers.
 
 ## Git Commit and Pull Request Guidelines
 
-### CRITICAL: Every Commit AND Pull Request Must Include Human-Claude Interaction Logs
-
-**Human-Claude interaction logs are MANDATORY for:**
-- ✅ **ALL commits** - Every single commit must include the verbatim human prompts that led to it
-- ✅ **ALL pull requests** - PR descriptions must include the interaction log for PR creation
-- ✅ **Amended commits** - If you forget the log, amend the commit immediately when reminded
-
-**Why this matters:** These logs are critical for helping other operators learn how to work effectively with Claude. They provide invaluable context about human guidance and decision-making.
-
 ### When to Commit
 Only commit when:
 - ✅ Terraform validates successfully (if infrastructure changed)
@@ -198,7 +189,6 @@ Only commit when:
 - ✅ Reached major milestone
 
 Never commit:
-- ❌ Without capturing full interaction log
 - ❌ With Terraform validation errors
 - ❌ "Proactively" without meeting above criteria
 
@@ -209,54 +199,6 @@ Before ANY commit:
 - [ ] Did I check Ruby syntax if Lambda code changed?
 - [ ] Did I search for existing patterns before writing code?
 - [ ] Did I document any NEW patterns in this file?
-- [ ] **Did I capture VERBATIM human-Claude interactions in commit message?**
-
-### MANDATORY: Output Before EVERY Commit
-You MUST output exactly:
-```
-📝 COMMIT READY CHECK:
-☑️ Terraform formatted: [YES/NO/NA - only if .tf files changed]
-☑️ Terraform valid: [YES/NO/NA - only if infrastructure changed]
-☑️ Ruby syntax valid: [YES/NO/NA - only if Lambda code changed]
-☑️ Documented new patterns: [YES/NO/NA - only if applicable]
-☑️ FULL interaction log ready: [YES - X prompts captured VERBATIM]
-
-[If ANY are NO: "❌ NOT ready - need to: (list required actions)"]
-[If ALL are YES/NA: "✅ Ready to commit with COMPLETE Human-Claude interaction log."]
-```
-
-### Commit Message Template
-```bash
-# First, check what you modified:
-git status
-# Then add YOUR specific changes (not everything):
-git add [specific files you changed]
-# For multiple files:
-git add modules/deployomat/src/lib.rb modules/deployomat/state_machines/deploy.json
-# Commit with interaction log:
-git commit -m "$(cat <<'EOF'
-Brief description of what was done
-
-[Technical changes made - e.g., Updated Lambda function, Modified state machine, Changed IAM permissions]
-
-## Human-Claude Interaction Log
-
-### Human prompts (VERBATIM - include typos, informal language, COMPLETE text):
-1. "[Copy-paste ENTIRE first prompt, even if long]"
-   → Claude: [What Claude did in response]
-   
-2. "[Copy-paste ENTIRE second prompt, don't summarize or clean up]"
-   → Claude: [How Claude adjusted]
-
-### Key decisions made:
-- Human guided: [specific guidance provided]
-- Claude discovered: [patterns found, existing code analyzed]
-
-🤖 Generated with Claude Code
-Co-Authored-By: Claude <noreply@anthropic.com>
-EOF
-)"
-```
 
 **Note**: Avoid `git add -A` when multiple Claudes work in parallel - add only YOUR files.
 
@@ -265,9 +207,8 @@ When creating a pull request, ALWAYS include:
 1. Clear summary of changes
 2. Reference to any related issues (e.g., "Fixes #5")
 3. Test plan with checkboxes
-4. **MANDATORY: Human-Claude Interaction Log section** showing the prompts that led to the PR
-5. Tag reviewers as requested by humans
-6. Include review date in title if requested (e.g., "[2025-08-28] Title")
+4. Tag reviewers as requested by humans
+5. Include review date in title if requested (e.g., "[2025-08-28] Title")
 
 Example PR description:
 ```markdown
@@ -280,11 +221,4 @@ Example PR description:
 ## Test Plan
 - [x] Tests pass
 - [ ] Manual testing steps
-
-## Human-Claude Interaction Log for PR Creation
-### Human prompts (VERBATIM):
-1. "[Exact prompt that led to PR]"
-   → Claude: [What Claude did]
-
-🤖 Generated with [Claude Code](https://claude.ai/code)
 ```
