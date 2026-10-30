@@ -20,6 +20,8 @@ RSpec.describe LambdaFunctions::Handler do
       result = described_class.cancel(event: event('Step' => 'Finish'), context: nil)
 
       expect(result).to include(Status: :fail)
+      # slack_notify joins Error, so it has to be a list.
+      expect(result[:Error]).to match([/No deployment of thezoo/])
       expect(dynamo_calls.length).to eq(1)
     end
   end

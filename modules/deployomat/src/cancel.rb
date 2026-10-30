@@ -132,7 +132,7 @@ module Deployomat
       if deploy_asg_name.nil? || deploy_asg_name.empty?
         msg = "No deployment of #{service_name} in #{account_name} active"
         puts msg
-        return { Status: :fail, Error: msg }
+        return { Status: :fail, Error: [msg] }
       end
 
       production_asg = @config.production_asg
