@@ -86,7 +86,7 @@ variable "lambda_name" {
 
 variable "source_file" {
   type        = string
-  description = "Path to an alternate handler. Must be implemented in Ruby 2.7, be named slack_notify.rb, and have a SlackNotify.handler method."
+  description = "Path to an alternate handler. Must be implemented in Ruby 3.4, be named slack_notify.rb, and have a SlackNotify.handler method."
   default     = null
 }
 

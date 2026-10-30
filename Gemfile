@@ -2,6 +2,10 @@
 
 source 'https://rubygems.org'
 
+ruby '~> 3.4.0'
+
+gem 'rake'
+
 # Testing dependencies
 group :test do
   gem 'rspec', '~> 3.12'
@@ -17,9 +21,10 @@ group :development do
   gem 'pry', '~> 0.14'  # Debugging tool
 end
 
-# AWS SDK - matches Lambda Ruby 2.7 runtime
-# These are provided by Lambda runtime but needed for local testing
+# AWS SDK - the Lambdas run on the managed ruby3.4 runtime's own gems. These are
+# only for local testing.
 group :test, :development do
+  gem 'aws-sdk-eventbridge', '~> 1'
   gem 'aws-sdk-autoscaling', '~> 1'
   gem 'aws-sdk-dynamodb', '~> 1'
   gem 'aws-sdk-ec2', '~> 1'

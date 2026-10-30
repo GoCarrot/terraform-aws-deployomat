@@ -16,7 +16,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = ">= 3, < 7"
+      version = ">= 5.93, < 7"
     }
 
     archive = {
@@ -113,7 +113,7 @@ resource "aws_lambda_function" "deployomat-slack-notify" {
   role             = local.iam_role_arn
   architectures    = ["arm64"]
   memory_size      = 128
-  runtime          = "ruby2.7"
+  runtime          = "ruby3.4"
   filename         = data.archive_file.slack-notify.output_path
   source_code_hash = filebase64sha256(data.archive_file.slack-notify.output_path)
   handler          = "slack_notify.SlackNotify.handler"

@@ -7,14 +7,13 @@ orbs:
 jobs:
   test:
     docker:
-      - image: cimg/ruby:2.7-node  # Ruby 2.7 to match Lambda runtime
+      - image: cimg/ruby:3.4.12-node  # Ruby 3.4 to match Lambda runtime
     
     steps:
       - checkout
       
       # Ruby dependencies
-      - ruby/install-deps:
-          bundler-version: '2.3.27'
+      - ruby/install-deps
       
       # Install Terraform
       - terraform/install:
@@ -42,6 +41,7 @@ jobs:
           command: |
             mkdir -p test-results/rspec
             bundle exec rspec \
+              --pattern 'modules/**/spec/**/*_spec.rb' \
               --format documentation \
               --format RspecJunitFormatter \
               --out test-results/rspec/results.xml \

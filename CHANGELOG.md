@@ -1,3 +1,14 @@
+## 0.4.0
+
+BREAKING CHANGES:
+
+* The Lambda functions now run on the `ruby3.4` runtime (was `ruby2.7`). The `deployomat` and `slack_notifier` modules require AWS provider `>= 5.93`, the first release that accepts `ruby3.4`.
+* A custom `slack_notifier` handler must now be Ruby 3.4 compatible.
+
+BUG FIXES:
+
+* The Slack notification for a cancel that failed because nothing was deploying no longer raises `NoMethodError`, so the alert is delivered.
+
 ## 0.3.11
 
 v0.3.10 was never tagged on the remote, so this release also ships the 0.3.10 changes below and the Slack message format change.
