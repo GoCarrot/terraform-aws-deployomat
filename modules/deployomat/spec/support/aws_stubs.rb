@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 # Every AWS client the code under test builds is a stub (the clients are constructed
-# inside src/, so Aws.config is the seam). Params are still validated against the real
-# API models. Override ssm_params / dynamo_item per example.
+# inside src/, so Aws.config is the seam). Override ssm_params / dynamo_item per
+# example.
 RSpec.shared_context 'with stubbed aws' do
   let(:slug) { 'dev-account' }
   let(:service) { 'thezoo' }

@@ -2,8 +2,8 @@
 
 require_relative 'spec_helper'
 
-# Each handler builds a Deployomat::Config before it does anything else. Ruby 3 no longer
-# turns a positional Hash into keywords, so a bad call there fails every step of every deploy.
+# Runs each handler end to end against stubbed AWS clients. Each one builds a
+# Deployomat::Config before anything else, so these cover that call for every handler.
 RSpec.describe LambdaFunctions::Handler do
   include_context 'with stubbed aws'
 
@@ -33,7 +33,7 @@ RSpec.describe LambdaFunctions::Handler do
 
     it 'builds a Config for a Finish' do
       allow(Deployomat::FinishDeploy).to receive(:new).and_call_original
-      allow_any_instance_of(Deployomat::FinishDeploy).to receive(:call).and_return(Status: :complete) # rubocop:disable RSpec/AnyInstance
+      allow_any_instance_of(Deployomat::FinishDeploy).to receive(:call).and_return(Status: :complete)
 
       result = described_class.deploy(event: event('Step' => 'Finish'), context: nil)
 

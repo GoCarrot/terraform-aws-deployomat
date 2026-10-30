@@ -135,7 +135,6 @@ DEPENDENCIES
   aws-sdk-eventbridge (~> 1)
   aws-sdk-ssm (~> 1)
   aws-sdk-sts (~> 1)
-  bigdecimal
   pry (~> 0.14)
   rake
   rspec (~> 3.12)
@@ -144,6 +143,9 @@ DEPENDENCIES
   rubocop-rspec (~> 2.20)
   simplecov (~> 0.22)
   webmock (~> 3.18)
+
+RUBY VERSION
+   ruby 3.4.12p148
 
 BUNDLED WITH
    2.6.9

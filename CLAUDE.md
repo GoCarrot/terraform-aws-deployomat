@@ -56,8 +56,8 @@ bundle install
 bundle exec rake spec   # plain `bundle exec rspec` finds no specs at the repo root
 
 # Run tests for specific module
-rake spec:slack_notifier
-rake spec:deployomat
+bundle exec rake spec:slack_notifier
+bundle exec rake spec:deployomat
 
 # Run linting
 bundle exec rubocop
@@ -65,8 +65,6 @@ bundle exec rubocop
 # Run all checks (formatting, validation, linting, tests)
 rake check
 
-# Run tests with coverage report
-bundle exec rake spec
 ```
 
 ## Key Patterns
