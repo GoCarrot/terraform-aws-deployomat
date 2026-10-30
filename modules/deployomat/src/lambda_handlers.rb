@@ -28,7 +28,7 @@ module LambdaFunctions
         account_canonical_slug: event['AccountCanonicalSlug'], service_name: event['ServiceName'],
         deploy_id: "cancel-#{event['DeployId']}"
       }
-      config = Deployomat::Config.new(args)
+      config = Deployomat::Config.new(**args)
       op =
         if event['Step'] == 'Start'
           Deployomat::StartCancel.new(config)
@@ -43,7 +43,7 @@ module LambdaFunctions
         account_canonical_slug: event['AccountCanonicalSlug'], service_name: event['ServiceName'],
         deploy_id: "deploy-#{event['DeployId']}"
       }
-      config = Deployomat::Config.new(args)
+      config = Deployomat::Config.new(**args)
       op =
         case event['Step']
         when 'Start'
@@ -84,7 +84,7 @@ module LambdaFunctions
         account_canonical_slug: event['AccountCanonicalSlug'], service_name: event['ServiceName'],
         deploy_id: "undeploy-#{event['DeployId']}"
       }
-      config = Deployomat::Config.new(args)
+      config = Deployomat::Config.new(**args)
       op = Deployomat::Undeploy.new(config, undeploy_config: event.dig('AllInput', 'UndeployConfig'))
       op.call
     end

@@ -18,7 +18,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = ">= 3, < 7"
+      version = ">= 5.93, < 7"
     }
 
     archive = {
@@ -359,7 +359,7 @@ resource "aws_lambda_function" "deployomat-cancel" {
   role             = aws_iam_role.deployomat.arn
   architectures    = ["arm64"]
   memory_size      = 512
-  runtime          = "ruby2.7"
+  runtime          = "ruby3.4"
   filename         = data.archive_file.deployomat.output_path
   source_code_hash = filebase64sha256(data.archive_file.deployomat.output_path)
   handler          = "lambda_handlers.LambdaFunctions::Handler.cancel"
@@ -390,7 +390,7 @@ resource "aws_lambda_function" "deployomat-deploy" {
   role             = aws_iam_role.deployomat.arn
   architectures    = ["arm64"]
   memory_size      = 512
-  runtime          = "ruby2.7"
+  runtime          = "ruby3.4"
   filename         = data.archive_file.deployomat.output_path
   source_code_hash = filebase64sha256(data.archive_file.deployomat.output_path)
   handler          = "lambda_handlers.LambdaFunctions::Handler.deploy"
@@ -424,7 +424,7 @@ resource "aws_lambda_function" "deployomat-undeploy" {
   role             = aws_iam_role.deployomat.arn
   architectures    = ["arm64"]
   memory_size      = 512
-  runtime          = "ruby2.7"
+  runtime          = "ruby3.4"
   filename         = data.archive_file.deployomat.output_path
   source_code_hash = filebase64sha256(data.archive_file.deployomat.output_path)
   handler          = "lambda_handlers.LambdaFunctions::Handler.undeploy"

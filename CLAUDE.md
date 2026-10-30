@@ -12,7 +12,7 @@ Deployomat is an AWS deployment automation tool that manages AMI deployments usi
 
 ### Core Components
 - **Terraform Modules**: Located in `/modules/`, each module serves a specific purpose (deployomat, deploy_access_role, deployer_role, meta_access_role, slack_notifier)
-- **Lambda Functions**: Ruby 2.7 functions in `modules/deployomat/src/` handle deploy, cancel, undeploy, and Slack notifications
+- **Lambda Functions**: Ruby 3.4 functions in `modules/deployomat/src/` handle deploy, cancel, undeploy, and Slack notifications
 - **Step Functions**: State machines in `modules/deployomat/state_machines/` orchestrate deployment workflows
 
 ### Key Files
@@ -43,7 +43,7 @@ terraform fmt -recursive
 ```
 
 ### Working with Ruby Code
-- Ruby version: 2.7 (AWS Lambda runtime)
+- Ruby version: 3.4 (AWS Lambda runtime)
 - Gemfile present for testing dependencies
 - Code is zipped by Terraform during apply
 
@@ -53,11 +53,11 @@ terraform fmt -recursive
 bundle install
 
 # Run all tests
-bundle exec rspec
+bundle exec rake spec   # plain `bundle exec rspec` finds no specs at the repo root
 
 # Run tests for specific module
 rake spec:slack_notifier
-rake spec:deployomat  # (when tests are added)
+rake spec:deployomat
 
 # Run linting
 bundle exec rubocop
@@ -66,7 +66,7 @@ bundle exec rubocop
 rake check
 
 # Run tests with coverage report
-bundle exec rspec --format documentation
+bundle exec rake spec
 ```
 
 ## Key Patterns
