@@ -4,6 +4,7 @@ source 'https://rubygems.org'
 
 # bigdecimal is a bundled (not default) gem as of Ruby 3.4, so Bundler needs it spelled out.
 gem 'bigdecimal'
+gem 'rake'
 
 # Testing dependencies
 group :test do

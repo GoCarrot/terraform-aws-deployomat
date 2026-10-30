@@ -64,6 +64,7 @@ GEM
     public_suffix (6.0.2)
     racc (1.8.1)
     rainbow (3.1.1)
+    rake (13.4.2)
     regexp_parser (2.13.1)
     rexml (3.4.4)
     rspec (3.13.1)
@@ -136,6 +137,7 @@ DEPENDENCIES
   aws-sdk-sts (~> 1)
   bigdecimal
   pry (~> 0.14)
+  rake
   rspec (~> 3.12)
   rspec_junit_formatter (~> 0.6)
   rubocop (~> 1.50)
