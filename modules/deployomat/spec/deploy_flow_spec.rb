@@ -20,18 +20,10 @@ RSpec.describe LambdaFunctions::Handler, '.deploy' do
   end
 
   before do
-    ENV.delete('DEPLOYOMAT_AMI_SEARCH_OWNERS')
     Aws.config.update(world.stubs)
     allow_any_instance_of(Deployomat::Asg).to receive(:sleep)
-  end
-
-  # The handlers puts a running commentary.
-  around do |example|
-    original = $stdout
-    $stdout = StringIO.new # rubocop:disable RSpec/ExpectOutput
-    example.run
-  ensure
-    $stdout = original # rubocop:disable RSpec/ExpectOutput
+    # The handlers narrate with puts.
+    allow($stdout).to receive(:puts)
   end
 
   def step(name, event = {})
@@ -311,10 +303,7 @@ RSpec.describe LambdaFunctions::Handler, '.deploy' do
     end
 
     it 'removes the target group it made when the ASG will not clone' do
-      Aws.config[:autoscaling][:stub_responses][:create_auto_scaling_group] = lambda do |ctx|
-        world.requests << [:create_auto_scaling_group, ctx.params]
-        'ValidationError'
-      end
+      world.fail_with(:create_auto_scaling_group, 'ValidationError')
 
       result = start
 
@@ -348,7 +337,8 @@ RSpec.describe LambdaFunctions::Handler, '.deploy' do
     end
 
     it 'resolves a $name-prefix to the newest matching AMI' do
-      ENV['DEPLOYOMAT_AMI_SEARCH_OWNERS'] = '111111111111'
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with('DEPLOYOMAT_AMI_SEARCH_OWNERS').and_return('111111111111')
       Aws.config[:ec2][:stub_responses][:describe_images] = {
         images: [
           { image_id: 'ami-old', name: 'zoo-1', creation_date: '2026-01-01' },

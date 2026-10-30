@@ -20,12 +20,13 @@ class DeployWorld
   DEFAULT_TG = 'arn:aws:elasticloadbalancing:us-east-1:111111111111:targetgroup/default/ccc'
   HOST = 'zoo.example.com'
 
-  attr_reader :requests, :item, :rules, :target_groups, :asgs, :healthy
+  attr_reader :requests, :item, :rules, :target_groups, :asgs, :healthy, :failures
 
   def initialize(slug:, service:)
     @primary_key = "#{slug}.#{service}"
     @service = service
     @requests = []
+    @failures = {}
     @item = { 'id' => @primary_key }
     @asgs = {}
     @rules = []
@@ -41,11 +42,16 @@ class DeployWorld
     requests.select { |(name, _)| name == operation }.map(&:last)
   end
 
+  # Make every call to an operation fail with an AWS error code, e.g. 'ValidationError'.
+  def fail_with(operation, code)
+    failures[operation] = code
+  end
+
   def rule(arn)
     rules.find { |r| r[:rule_arn] == arn }
   end
 
-  # Template ASG, its target group, and the exemplar rule (priority 40_000 + priority).
+  # Template ASG, its target group, and the exemplar rule (priority 40_010, so 10 in production).
   def with_template(hooks: true, policies: true, warm_pool: true, metrics: true)
     @hooks = hooks
     @policies = policies
@@ -100,10 +106,21 @@ class DeployWorld
     {
       dynamodb: dynamodb_stubs, autoscaling: autoscaling_stubs, elasticloadbalancingv2: elb_stubs,
       ec2: ec2_stubs, eventbridge: eventbridge_stubs
-    }.transform_values { |responses| { stub_responses: responses } }
+    }.transform_values { |responses| { stub_responses: with_failures(responses) } }
   end
 
   private
+
+  def with_failures(responses)
+    responses.to_h do |operation, stub|
+      [operation, lambda do |ctx|
+        next stub.call(ctx) unless failures.key?(operation)
+
+        record(ctx)
+        failures[operation]
+      end]
+    end
+  end
 
   def record(ctx)
     # The SDK fills in idempotency tokens; they're noise.
@@ -118,8 +135,6 @@ class DeployWorld
     'ConditionalCheckFailedException'
   end
 
-  # Conditions are the ones in Config, restated as ruby. If the expressions change this
-  # needs to follow.
   def dynamodb_stubs
     {
       get_item: lambda do |ctx|
@@ -130,6 +145,8 @@ class DeployWorld
     }
   end
 
+  # The conditions are the ones in Config, restated as ruby. If the expressions change this
+  # needs to follow.
   def update_item(ctx)
     record(ctx)
     # The dynamodb client rewrites plain values to {s: 'x'} before a stub sees them.
