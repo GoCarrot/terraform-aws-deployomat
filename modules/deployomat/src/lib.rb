@@ -379,7 +379,7 @@ module Deployomat
     def schedule_undeploy(time)
       cron_expression = "cron(#{time.min} #{time.hour} #{time.day} #{time.month} ? #{time.year})"
       undeploy_desc = "automatic undeploy of #{@config.service_name} in #{@config.account_canonical_slug}"
-      rule = @client.put_rule(
+      @client.put_rule(
         name: rule_name,
         schedule_expression: cron_expression,
         state: 'ENABLED',

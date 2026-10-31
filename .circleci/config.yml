@@ -26,16 +26,13 @@ jobs:
       
       - run:
           name: Terraform Validation
-          command: |
-            terraform init -backend=false
-            terraform validate
-      
-      # Ruby linting (continue on error for now)
+          command: bundle exec rake terraform:validate
+
       - run:
           name: Run RuboCop
-          command: bundle exec rubocop modules --display-cop-names || true
+          command: bundle exec rubocop --display-cop-names
       
-      # Run tests with coverage
+      # Run tests
       - run:
           name: Run RSpec Tests
           command: |
@@ -55,10 +52,6 @@ jobs:
       - store_artifacts:
           path: test-results
           destination: test-results
-      
-      - store_artifacts:
-          path: coverage
-          destination: coverage
 
   # Validate all module examples
   validate-examples:

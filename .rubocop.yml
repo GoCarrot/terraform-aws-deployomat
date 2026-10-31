@@ -1,0 +1,46 @@
+# Lint is enforced everywhere. The Lambda sources under modules/*/src ship in the zip
+# every consumer redeploys, so their Style/Layout/Metrics/Naming are left alone: a
+# cosmetic rewrite there is a deploy-path change with no spec to catch a slip.
+plugins:
+  - rubocop-rspec
+
+AllCops:
+  TargetRubyVersion: 3.4
+  NewCops: disable
+  SuggestExtensions: false
+  Exclude:
+    - vendor/**/*
+    - .terraform/**/*
+    - modules/*/.terraform/**/*
+
+Style:
+  Exclude: &lambda_src
+    - modules/*/src/**/*
+Layout:
+  Exclude: *lambda_src
+Naming:
+  Exclude: *lambda_src
+
+# None of this code was written to those limits, and the specs are long on purpose.
+Metrics:
+  Enabled: false
+
+RSpec/ExampleLength:
+  Enabled: false
+RSpec/MultipleExpectations:
+  Enabled: false
+RSpec/MultipleMemoizedHelpers:
+  Enabled: false
+
+# src is flat, so specs can't mirror its layout.
+RSpec/SpecFilePathFormat:
+  Enabled: false
+
+# The objects under test build their own AWS clients and Asg/FinishDeploy instances inside
+# src, so there's no instance to hand a double to.
+RSpec/AnyInstance:
+  Enabled: false
+
+# Lambda calls handlers with `context:` whether or not they use it.
+Lint/UnusedMethodArgument:
+  AllowUnusedKeywordArguments: true

@@ -13,3 +13,4 @@ coverage/
 # Bundler vendor directory
 vendor/bundle
 .bundle/
+.terraform.lock.hcl

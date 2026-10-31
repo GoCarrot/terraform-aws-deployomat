@@ -11,7 +11,6 @@ end
 
 # RuboCop linting task
 RuboCop::RakeTask.new(:rubocop) do |t|
-  t.patterns = ['modules/**/*.rb']
   t.options = ['--display-cop-names']
 end
 
@@ -19,12 +18,12 @@ end
 namespace :spec do
   desc 'Run tests for deployomat module'
   task :deployomat do
-    sh 'rspec modules/deployomat/spec --format documentation --color'
+    sh 'bundle exec rspec modules/deployomat/spec --format documentation --color'
   end
 
   desc 'Run tests for slack_notifier module'
   task :slack_notifier do
-    sh 'rspec modules/slack_notifier/spec --format documentation --color'
+    sh 'bundle exec rspec modules/slack_notifier/spec --format documentation --color'
   end
 end
 
@@ -35,10 +34,14 @@ namespace :terraform do
     sh 'terraform fmt -recursive'
   end
 
-  desc 'Validate Terraform configuration'
+  desc 'Validate every Terraform module under modules/'
   task :validate do
-    sh 'terraform init -backend=false'
-    sh 'terraform validate'
+    failed = Dir['modules/*/'].sort.select { |dir| Dir["#{dir}*.tf"].any? }.reject do |dir|
+      puts "==> #{dir}"
+      system('terraform init -backend=false -input=false -no-color', chdir: dir) &&
+        system('terraform validate -no-color', chdir: dir)
+    end
+    abort "terraform validate failed in: #{failed.join(', ')}" unless failed.empty?
   end
 end
 

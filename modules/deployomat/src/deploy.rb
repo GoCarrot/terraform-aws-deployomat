@@ -170,7 +170,6 @@ module Deployomat
       production_tg_arn = production_asg&.target_group_arns&.first
 
       if exemplar_tg_arn
-        production_rules = []
         listeners = params.get_list_or_json("#{prefix}/config/#{service_name}/listener_arns")
         production_rules = listeners.flat_map do |(key, listener)|
           if !listener
@@ -216,7 +215,7 @@ module Deployomat
     def process_command(ec2, template_asg, cmd)
       launch_template = template_asg.launch_template
       case cmd
-      when /^\$launchtemplate:(?<lt_version>([1-9][0-9]*$)|(\$Latest$)|(\$Default$)|(\$LatestMinus:(?<offset>[0-9]+$)))/
+      when /^\$launchtemplate:(?<lt_version>(?:[1-9][0-9]*$)|(?:\$Latest$)|(?:\$Default$)|(?:\$LatestMinus:(?<offset>[0-9]+$)))/
         match_data = $~
         lt_version = match_data[:lt_version]
         offset = match_data[:offset]

@@ -120,7 +120,7 @@ rake check
 ### Test Structure
 - **Unit Tests**: Located in `modules/*/spec/` directories
 - **Test Helpers**: Each module has a `spec_helper.rb` for configuration
-- **Mocking**: WebMock for HTTP requests, RSpec mocks for AWS SDK
+- **Mocking**: WebMock for HTTP requests; stubbed SDK clients for AWS. Deploy flow specs use `DeployWorld` (`modules/deployomat/spec/support/deploy_world.rb`), a stateful fake of the row, ASGs, target groups and rules. Extend it, don't hand-stub per spec
 
 ### Running Tests
 1. **Before committing changes**: Run `bundle exec rspec` to ensure tests pass
