@@ -2,64 +2,8 @@
 
 require_relative 'spec_helper'
 
-# Drives the deploy Lambda one Step at a time, the way state_machines/deploy.json does,
-# against a stateful fake of the account (support/deploy_world.rb).
 RSpec.describe LambdaFunctions::Handler, '.deploy' do
-  include_context 'with stubbed aws'
-
-  let(:world) { DeployWorld.new(slug: slug, service: service) }
-  let(:prefix) { DeployWorld::PREFIX }
-  let(:deploy_config) { { 'TrafficShiftPerStep' => 50, 'WaitPerStep' => 1, 'BakeTime' => 10 } }
-  let(:ami) { 'ami-0123456789' }
-  let(:ssm_params) do
-    {
-      "/omat/account_registry/#{slug}" => JSON.generate(account_info),
-      "#{prefix}/roles/Deployomat" => 'arn:aws:iam::111111111111:role/teak/service-role/Deployomat',
-      "#{prefix}/config/#{service}/listener_arns" => JSON.generate([DeployWorld::LISTENER_ARN])
-    }
-  end
-
-  before do
-    Aws.config.update(world.stubs)
-    allow_any_instance_of(Deployomat::Asg).to receive(:sleep)
-    # The handlers narrate with puts.
-    allow($stdout).to receive(:puts)
-  end
-
-  def step(name, event = {})
-    base = { 'AccountCanonicalSlug' => slug, 'ServiceName' => service, 'DeployId' => 'exec-1', 'Step' => name }
-    LambdaFunctions::Handler.deploy(event: base.merge(event), context: nil)
-  end
-
-  def start(config: deploy_config, ami_id: ami)
-    step('Start', 'AmiId' => ami_id, 'AllInput' => { 'DeployConfig' => config })
-  end
-
-  # What the loop-wait state machine does: call again with the last result until it stops waiting.
-  def loop_step(name, event)
-    result = step(name, event)
-    20.times do
-      return result unless result[:Status] == :wait
-
-      # Step Functions hands the last result back as JSON.
-      result = step(name, event.merge('StepResult' => JSON.parse(JSON.generate(result))))
-    end
-    raise "#{name} still waiting after 20 steps: #{result}"
-  end
-
-  def new_asg_name
-    world.calls(:create_auto_scaling_group).first.fetch(:auto_scaling_group_name)
-  end
-
-  def new_tg_arn
-    world.target_groups.keys.find { |arn| arn.end_with?('/new') }
-  end
-
-  def weights(rule_arn)
-    world.rule(rule_arn)[:actions].first[:forward_config][:target_groups].to_h do |tg|
-      [tg[:target_group_arn], tg[:weight]]
-    end
-  end
+  include_context 'with deploy world'
 
   describe 'first deploy' do
     let(:template_options) { {} }
@@ -215,6 +159,27 @@ RSpec.describe LambdaFunctions::Handler, '.deploy' do
       expect(world.calls(:delete_target_group)).to eq([{ target_group_arn: DeployWorld::PRODUCTION_TG }])
     end
 
+    it 'completes CheckHealthy when the ASG has scaled past the minimum' do
+      started
+      world.healthy[new_tg_arn] = 4
+
+      expect(step('CheckHealthy', 'MinHealthy' => 3, 'TargetGroupArn' => new_tg_arn, 'WaitTime' => 30)).to eq(
+        Status: :complete
+      )
+    end
+
+    it 'clamps weights when the step does not divide 100' do
+      rule_id = started[:RuleIds].first
+
+      expect(loop_step('Rollout', rollout_event(started, step_size: 30))).to eq(Status: :complete)
+
+      expect(weights(rule_id)).to eq(DeployWorld::PRODUCTION_TG => 0, new_tg_arn => 100)
+      sent = world.calls(:modify_rule).map do |rule|
+        rule[:actions].first[:forward_config][:target_groups].map { |tg| tg[:weight] }
+      end
+      expect(sent).to eq([[100, 0], [70, 30], [40, 60], [10, 90], [0, 100]])
+    end
+
     it 'sizes the new ASG to the production instance count' do
       started
 
@@ -267,6 +232,45 @@ RSpec.describe LambdaFunctions::Handler, '.deploy' do
     end
   end
 
+  describe 'batch service' do
+    let(:ssm_params) { super().except(listener_param) }
+
+    def bake_and_finish(started)
+      bake = { 'TargetGroupArn' => started[:NewTargetGroupArn], 'RuleIds' => started[:RuleIds], 'BakeTime' => 10 }
+      expect(loop_step('Bake', bake)).to eq(Status: :complete)
+
+      step('Finish', 'AllowUndeploy' => started[:AllowUndeploy],
+                     'AutomaticUndeployMinutes' => started[:AutomaticUndeployMinutes])
+    end
+
+    it 'goes Start -> Bake -> Finish on a first deploy, without touching the load balancer' do
+      world.with_template(target_group: false)
+
+      started = start
+      expect(started).to include(Status: :success, RuleIds: '', NewTargetGroupArn: '')
+      expect(bake_and_finish(started)).to eq(Status: :complete)
+
+      expect(world.item).to include('production_asg_name' => new_asg_name, 'deploy_asg_name' => '')
+      expect(world.calls(:create_auto_scaling_group).first).not_to include(:target_group_arns)
+      expect(world.calls(:create_target_group)).to be_empty
+      expect(world.calls(:create_rule)).to be_empty
+    end
+
+    it 'replaces the production ASG on a rolling deploy' do
+      world.with_template(target_group: false).with_production
+      old_asg = world.item['production_asg_name']
+
+      started = start
+      expect(started).to include(Status: :success, RuleIds: '')
+      expect(world.calls(:update_auto_scaling_group)).to eq([{ auto_scaling_group_name: old_asg, min_size: 3 }])
+      expect(bake_and_finish(started)).to eq(Status: :complete)
+
+      expect(world.item).to include('production_asg_name' => new_asg_name)
+      expect(world.calls(:delete_auto_scaling_group)).to eq([{ auto_scaling_group_name: old_asg, force_delete: true }])
+      expect(world.calls(:delete_target_group)).to be_empty
+    end
+  end
+
   describe 'start' do
     before { world.with_template }
 
@@ -280,7 +284,20 @@ RSpec.describe LambdaFunctions::Handler, '.deploy' do
     it 'fails on a negative bake time' do
       result = start(config: { 'BakeTime' => -1 })
 
-      expect(result).to eq(Status: :fail, Error: ['bake_time must be greater than zero'])
+      expect(result).to eq(Status: :fail, Error: ['bake_time must not be negative'])
+    end
+
+    it 'fails on a TrafficShiftPerStep of zero, which would never finish' do
+      result = start(config: { 'TrafficShiftPerStep' => 0 })
+
+      expect(result).to eq(Status: :fail, Error: ['traffic_shift_per_step must be greater than zero'])
+      expect(world.item).not_to include('deploy_asg_name')
+    end
+
+    it 'allows zero for BakeTime, WaitPerStep and HealthTimeout' do
+      result = start(config: { 'BakeTime' => 0, 'WaitPerStep' => 0, 'HealthTimeout' => 0 })
+
+      expect(result).to include(Status: :success, WaitForBakeTime: 0)
     end
 
     it 'fails when the template ASG is missing' do
@@ -312,6 +329,50 @@ RSpec.describe LambdaFunctions::Handler, '.deploy' do
       expect(world.calls(:create_auto_scaling_group).length).to eq(3)
       made = world.calls(:modify_target_group_attributes).first[:target_group_arn]
       expect(world.calls(:delete_target_group)).to eq([{ target_group_arn: made }])
+    end
+
+    context 'when the ASG will not clone' do
+      before { world.fail_with(:create_auto_scaling_group, 'ValidationError') }
+
+      it 'lets the next Start proceed' do
+        expect(start[:Status]).to eq(:fail)
+        expect(world.item).to include('deploy_asg_name' => '')
+
+        world.failures.clear
+
+        expect(start(deploy_id: 'exec-2')[:Status]).to eq(:success)
+        expect(world.item).to include('deploy_id' => 'deploy-exec-2', 'deploy_asg_name' => new_asg_name)
+      end
+
+      it 'leaves the row alone when a cancel took over during the retries' do
+        allow_any_instance_of(Deployomat::Asg).to receive(:sleep) { world.item['deploy_id'] = 'cancel-other' }
+
+        expect(start[:Status]).to eq(:fail)
+        expect(world.item['deploy_id']).to eq('cancel-other')
+        expect(world.item['deploy_asg_name']).not_to be_empty
+      end
+
+      it 'keeps the row set for Rollback when it cannot clean up' do
+        world.fail_with(:delete_target_group, 'ResourceInUse')
+
+        expect { start }.to raise_error(Aws::ElasticLoadBalancingV2::Errors::ResourceInUse)
+        expect(world.item['deploy_asg_name']).not_to be_empty
+      end
+    end
+
+    context 'when the clone fails after the ASG was created' do
+      before { world.fail_with(:put_scaling_policy, 'ValidationError') }
+
+      it 'destroys the new ASG and its target group, and clears the row' do
+        expect(start[:Status]).to eq(:fail)
+
+        expect(world.calls(:delete_auto_scaling_group)).to eq(
+          [{ auto_scaling_group_name: new_asg_name, force_delete: true }]
+        )
+        expect(world.asgs).not_to include(new_asg_name)
+        expect(new_tg_arn).to be_nil
+        expect(world.item).to include('deploy_asg_name' => '')
+      end
     end
 
     it 'reuses a launch template version for $launchtemplate:$LatestMinus:2' do
