@@ -4,9 +4,14 @@ BREAKING CHANGES:
 
 * The Lambda functions now run on the `ruby3.4` runtime (was `ruby2.7`). The `deployomat` and `slack_notifier` modules require AWS provider `>= 5.93`, the first release that accepts `ruby3.4`.
 * A custom `slack_notifier` handler must now be Ruby 3.4 compatible.
+* `DeployConfig.TrafficShiftPerStep` must now be greater than zero. A value of 0 used to pass validation and then sit at 0% traffic forever. `BakeTime`, `WaitPerStep` and `HealthTimeout` may still be 0.
 
 BUG FIXES:
 
+* A deploy that fails to clone its ASG no longer wedges the service. It now removes the new ASG and target group and clears `deploy_asg_name`, so the next deploy proceeds. Rows already wedged by this still need a cancel.
+* Traffic weights are clamped to 0-100. A `TrafficShiftPerStep` that doesn't divide 100 used to overshoot on its last step, e.g. -20/120 for a step of 30.
+* A deploy's health check now passes with more healthy instances than `MinHealthy`, instead of timing out and rolling back when the ASG scaled up during the wait.
+* The undeploy condition now checks `deploy_asg_name`, so a deploy starting after undeploy reads the row fails the undeploy instead of racing it.
 * The Slack notification for a cancel that failed because nothing was deploying no longer raises `NoMethodError`, so the alert is delivered.
 
 ## 0.3.11

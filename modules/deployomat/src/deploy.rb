@@ -35,7 +35,8 @@ module Deployomat
     attr_reader :ami_id, :new_asg_name, :bake_time, :health_timeout, :new_tg_name,
                 :traffic_shift_per_step, :wait_per_step, :allow_undeploy, :automatic_undeploy_minutes
 
-    GREATER_THAN_ZERO = %i[bake_time traffic_shift_per_step wait_per_step health_timeout].freeze
+    GREATER_THAN_ZERO = %i[traffic_shift_per_step].freeze
+    NOT_NEGATIVE = %i[bake_time wait_per_step health_timeout].freeze
 
     def initialize(config, ami_id:, deploy_config:)
       deploy_config = deploy_config || {}
@@ -61,8 +62,14 @@ module Deployomat
       end
 
       GREATER_THAN_ZERO.each do |check_attr|
-        if send(check_attr) < 0
+        if send(check_attr) <= 0
           error "#{check_attr} must be greater than zero"
+        end
+      end
+
+      NOT_NEGATIVE.each do |check_attr|
+        if send(check_attr) < 0
+          error "#{check_attr} must not be negative"
         end
       end
 
@@ -129,7 +136,6 @@ module Deployomat
       elbv2 = ElbV2.new(@config)
       # TODO: Support multiple target groups per asg.
       exemplar_tg_arn = template_asg.target_group_arns&.first
-      new_target_group = nil
       new_target_group_arn = nil
       if exemplar_tg_arn
         puts "Cloning target group..."
@@ -145,10 +151,7 @@ module Deployomat
         message = "Error cloning ASG to #{new_asg_name}. #{exc.class.name} #{exc.message}"
         puts message
         error message
-        if new_target_group
-          puts "Destroying new target group #{new_target_group_arn}"
-          elbv2.destroy_tg(new_target_group_arn)
-        end
+        abandon_start(asg, elbv2, new_target_group_arn)
         return error_response
       end
 
@@ -211,6 +214,29 @@ module Deployomat
     end
 
   private
+
+    # This run ends here with no Rollback, so nothing else will clean up after it. Clearing
+    # the row comes last: if the cleanup raises the row is still set, which is what lets
+    # the state machine's Catch -> Rollback find what was left behind.
+    def abandon_start(asg, elbv2, target_group_arn)
+      # clone_asg can fail after the ASG exists, and the row is our only pointer to it.
+      if asg.get(new_asg_name)
+        puts "Destroying new asg #{new_asg_name}"
+        asg.destroy(new_asg_name)
+      end
+
+      if target_group_arn
+        puts "Destroying new target group #{target_group_arn}"
+        elbv2.destroy_tg(target_group_arn)
+      end
+
+      begin
+        puts "Clearing deploying asg #{new_asg_name}"
+        @config.clear_deploy_asg
+      rescue Aws::DynamoDB::Errors::ConditionalCheckFailedException
+        puts NOT_ACTIVE_MSG
+      end
+    end
 
     def process_command(ec2, template_asg, cmd)
       launch_template = template_asg.launch_template
@@ -280,7 +306,7 @@ module Deployomat
       healthy_count = elbv2.count_healthy(target_group_arn)
       puts "Waiting for #{min_healthy} healthy instances, have #{healthy_count}"
 
-      if min_healthy == healthy_count
+      if healthy_count >= min_healthy
         { Status: :complete }
       elsif remaining_time >= seconds_to_wait
         { Status: :wait, Wait: seconds_to_wait, RemainingTime: remaining_time - seconds_to_wait }
@@ -323,7 +349,7 @@ module Deployomat
         end
         puts ACTIVE_ASSERT_MSG
         elbv2.shift_traffic(rule, step_size, old_target_group_arn, target_group_arn)
-        puts "Shifted traffic on #{rule.rule_arn} to #{total}%"
+        puts "Shifted traffic on #{rule.rule_arn} to #{[total, 100].min}%"
       end
       if total >= 100
         { Status: :complete }

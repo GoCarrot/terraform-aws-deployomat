@@ -386,7 +386,7 @@ Deployomat is intended to be used by assuming the role configured by the deploye
 
 Additional deploy options may be configured under a `DeployConfig` in the input. The following parameters are supported
 - `DeployConfig.BakeTime` controls how long Deployomat will pause after a deploy is complete before tearing down the previous deploy in seconds. The default is 60.
-- `DeployConfig.TrafficShiftPerStep` controls the percentage of traffic away from the previous deployment to the new deployment during rollout of web services. The default is 5.
+- `DeployConfig.TrafficShiftPerStep` controls the percentage of traffic away from the previous deployment to the new deployment during rollout of web services. Must be greater than zero. The default is 5.
 - `DeployConfig.WaitPerStep` controls how long Deployomat will wait between each traffic shift during rollout of web services in seconds. The default is 15.
 - `DeployConfig.HealthTimeout` controls how long Deployomat will wait in seconds for all instances in the new AutoScaling Group to become healthy before proceeding with the deploy. If all instances do not become healthy within the timeout Deployomat will abort the deploy. Default is 300.
 - `DeployConfig.OnConcurrentDeploy` controls how Deployomat will behave if a deploy of a service in an account is started while another deploy of the same service in the same account is active. Valid values are
