@@ -8,7 +8,7 @@ BREAKING CHANGES:
 
 BUG FIXES:
 
-* A deploy that fails to clone its ASG no longer wedges the service. It now removes the new ASG and target group and clears `deploy_asg_name`, so the next deploy proceeds. Rows already wedged by this still need a cancel.
+* A deploy that fails to clone its ASG no longer wedges the service. It now removes the new ASG and target group and clears `deploy_asg_name`, so the next deploy proceeds. This only blocked deploys using `OnConcurrentDeploy: fail`; the default `rollback` recovered on the next deploy. A row already stuck this way under `fail` still needs a cancel.
 * Traffic weights are clamped to 0-100. A `TrafficShiftPerStep` that doesn't divide 100 used to overshoot on its last step, e.g. -20/120 for a step of 30.
 * A deploy's health check now passes with more healthy instances than `MinHealthy`, instead of timing out and rolling back when the ASG scaled up during the wait.
 * The undeploy condition now checks `deploy_asg_name`, so a deploy starting after undeploy reads the row fails the undeploy instead of racing it.

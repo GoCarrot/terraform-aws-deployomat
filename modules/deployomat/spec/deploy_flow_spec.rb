@@ -341,7 +341,8 @@ RSpec.describe LambdaFunctions::Handler, '.deploy' do
         world.failures.clear
 
         expect(start(deploy_id: 'exec-2')[:Status]).to eq(:success)
-        expect(world.item).to include('deploy_id' => 'deploy-exec-2', 'deploy_asg_name' => new_asg_name)
+        retried = world.calls(:create_auto_scaling_group).last.fetch(:auto_scaling_group_name)
+        expect(world.item).to include('deploy_id' => 'deploy-exec-2', 'deploy_asg_name' => retried)
       end
 
       it 'leaves the row alone when a cancel took over during the retries' do
