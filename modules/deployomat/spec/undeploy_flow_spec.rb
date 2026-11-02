@@ -47,6 +47,14 @@ RSpec.describe LambdaFunctions::Handler, '.undeploy' do
     end
   end
 
+  describe 'state machine' do
+    it 'reads a known error from where it stores the Lambda result' do
+      states = JSON.parse(File.read(File.expand_path('../state_machines/undeploy.json', __dir__)))['States']
+
+      expect(states['KnownError']['Parameters']['Error.$']).to eq("#{states['StartUndeploy']['ResultPath']}.Error")
+    end
+  end
+
   describe 'a batch service' do
     let(:ssm_params) { super().except(listener_param) }
 
