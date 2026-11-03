@@ -20,6 +20,53 @@ class DeployWorld
   DEFAULT_TG = 'arn:aws:elasticloadbalancing:us-east-1:111111111111:targetgroup/default/ccc'
   HOST = 'zoo.example.com'
 
+  # Every conditional write Config makes, restated as ruby. Keyed on literal expressions,
+  # not the Config constants, so a changed guard raises here instead of following along
+  # unnoticed. Attributes come through the request's expression_attribute_names: the
+  # names map is as much a part of the guard as the expression is.
+  UNOWNED_OR_OURS = lambda { |attr, values|
+    attr['#DEPLOY_ID'].nil? || attr['#DEPLOY_ID'] == values[':old_deploy_id']
+  }
+  OURS = ->(attr, values) { attr['#DEPLOY_ID'] == values[':deploy_id'] }
+  NO_DEPLOY_ASG = ->(attr) { attr['#DEPLOY_ASG'].to_s.empty? }
+
+  GUARDS = {
+    ['SET #DEPLOY_ID = :new_deploy_id',
+     '#DEPLOY_ID = :old_deploy_id AND attribute_exists(#DEPLOY_ASG) AND #DEPLOY_ASG <> :empty'] =>
+      ->(attr, values) { attr['#DEPLOY_ID'] == values[':old_deploy_id'] && !NO_DEPLOY_ASG[attr] },
+
+    ['SET #DEPLOY_ID = :new_deploy_id, #DEPLOY_ASG = :deploy_asg',
+     '(attribute_not_exists(#DEPLOY_ID) OR #DEPLOY_ID = :old_deploy_id) AND ' \
+     '(attribute_not_exists(#DEPLOY_ASG) OR #DEPLOY_ASG = :empty) AND ' \
+     '(attribute_not_exists(#UNDEPLOY_STATE) OR #UNDEPLOY_STATE <> :undeploying)'] =>
+      lambda { |attr, values|
+        UNOWNED_OR_OURS[attr, values] && NO_DEPLOY_ASG[attr] && attr['#UNDEPLOY_STATE'] != 'undeploying'
+      },
+
+    ['SET #DEPLOY_ID = :new_deploy_id, #UNDEPLOY_STATE = :undeploying',
+     '(attribute_not_exists(#DEPLOY_ID) OR #DEPLOY_ID = :old_deploy_id) AND ' \
+     '(attribute_not_exists(#DEPLOY_ASG) OR #DEPLOY_ASG = :empty) AND ' \
+     '(#UNDEPLOY_STATE = :allow OR #UNDEPLOY_STATE = :undeploying)'] =>
+      lambda { |attr, values|
+        UNOWNED_OR_OURS[attr, values] && NO_DEPLOY_ASG[attr] && %w[allow undeploying].include?(attr['#UNDEPLOY_STATE'])
+      },
+
+    [nil,
+     '(attribute_not_exists(#DEPLOY_ID) OR #DEPLOY_ID = :deploy_id) AND ' \
+     '(attribute_not_exists(#UNDEPLOY_STATE) OR #UNDEPLOY_STATE = :undeploying)'] =>
+      lambda { |attr, values|
+        (attr['#DEPLOY_ID'].nil? || OURS[attr, values]) &&
+          (attr['#UNDEPLOY_STATE'].nil? || attr['#UNDEPLOY_STATE'] == 'undeploying')
+      },
+
+    ['SET #DEPLOY_ID = :deploy_id', '#DEPLOY_ID = :deploy_id'] => OURS,
+
+    ['SET #PROD_ASG = :prod_asg, #DEPLOY_ASG = :empty, #UNDEPLOY_STATE = :undeploy_state',
+     '#DEPLOY_ID = :deploy_id'] => OURS,
+
+    ['SET #DEPLOY_ASG = :empty', '#DEPLOY_ID = :deploy_id'] => OURS
+  }.freeze
+
   attr_reader :requests, :item, :rules, :target_groups, :asgs, :healthy, :failures
 
   def initialize(slug:, service:)
@@ -52,7 +99,8 @@ class DeployWorld
   end
 
   # Template ASG, its target group, and the exemplar rule (priority 40_010, so 10 in production).
-  def with_template(hooks: true, policies: true, warm_pool: true, metrics: true)
+  # Without a target group it's a batch service: no target groups or rules of its own.
+  def with_template(hooks: true, policies: true, warm_pool: true, metrics: true, target_group: true)
     @hooks = hooks
     @policies = policies
     asgs["#{@service}-template"] = {
@@ -65,7 +113,7 @@ class DeployWorld
       service_linked_role_arn: 'arn:aws:iam::111111111111:role/aws-service-role/autoscaling.amazonaws.com/asg',
       health_check_type: 'ELB', health_check_grace_period: 120, max_instance_lifetime: 604_800,
       termination_policies: %w[OldestInstance],
-      target_group_arns: [EXEMPLAR_TG], instances: [],
+      target_group_arns: target_group ? [EXEMPLAR_TG] : [], instances: [],
       tags: [
         asg_tag("#{ORG}:min_size", '1'), asg_tag("#{ORG}:max_size", '6'), asg_tag('Environment', 'dev')
       ],
@@ -76,10 +124,12 @@ class DeployWorld
                                                         { metric: 'GroupInServiceInstances', granularity: '1Minute' }]
     end
     asgs["#{@service}-template"][:warm_pool_configuration] = { pool_state: 'Stopped' } if warm_pool
-    target_groups[EXEMPLAR_TG] = target_group(EXEMPLAR_TG, "#{@service}-template")
-    target_groups[DEFAULT_TG] = target_group(DEFAULT_TG, 'default')
-    @tags[EXEMPLAR_TG] = [{ key: 'Environment', value: 'dev' }]
+    target_groups[DEFAULT_TG] = build_target_group(DEFAULT_TG, 'default')
     rules << default_rule
+    return self unless target_group
+
+    target_groups[EXEMPLAR_TG] = build_target_group(EXEMPLAR_TG, "#{@service}-template")
+    @tags[EXEMPLAR_TG] = [{ key: 'Environment', value: 'dev' }]
     add_rule(40_010, EXEMPLAR_TG)
     self
   end
@@ -87,15 +137,18 @@ class DeployWorld
   # A deployed production ASG with three instances, its target group, and its rule.
   def with_production
     name = "#{@service}-20260101T000000Z"
+    web = !asgs.fetch("#{@service}-template")[:target_group_arns].empty?
     asgs[name] = asgs.fetch("#{@service}-template").merge(
       auto_scaling_group_name: name, min_size: 2, max_size: 6, desired_capacity: 3,
-      target_group_arns: [PRODUCTION_TG],
+      target_group_arns: web ? [PRODUCTION_TG] : [],
       launch_template: { launch_template_id: 'lt-0abc', launch_template_name: "#{@service}-template", version: '6' },
       instances: Array.new(3) { |i| instance("i-0#{i}") }
     )
-    target_groups[PRODUCTION_TG] = target_group(PRODUCTION_TG, "#{@service}-20260101")
-    @tags[PRODUCTION_TG] = [{ key: 'Managed', value: 'Deployomat' }]
-    add_rule(10, PRODUCTION_TG)
+    if web
+      target_groups[PRODUCTION_TG] = build_target_group(PRODUCTION_TG, "#{@service}-20260101")
+      @tags[PRODUCTION_TG] = [{ key: 'Managed', value: 'Deployomat' }]
+      add_rule(10, PRODUCTION_TG)
+    end
     item['production_asg_name'] = name
     item['deploy_id'] = 'deploy-previous'
     item['undeploy_state'] = 'allow'
@@ -141,35 +194,42 @@ class DeployWorld
         record(ctx)
         { item: copy(item) }
       end,
-      update_item: ->(ctx) { update_item(ctx) }
+      update_item: ->(ctx) { update_item(ctx) },
+      delete_item: ->(ctx) { delete_item(ctx) }
     }
   end
 
-  # The conditions are the ones in Config, restated as ruby. If the expressions change this
-  # needs to follow.
   def update_item(ctx)
-    record(ctx)
-    # The dynamodb client rewrites plain values to {s: 'x'} before a stub sees them.
-    values = ctx.params[:expression_attribute_values].transform_values { |v| v.is_a?(Hash) ? v.values.first : v }
-    config = Deployomat::Config
-
-    case ctx.params[:update_expression]
-    when config::ASSERT_START_DEPLOY_UPDATE_EXPR
-      return conditional_failure unless item['deploy_asg_name'].to_s.empty? && item['undeploy_state'] != 'undeploying'
-      return conditional_failure unless item['deploy_id'].nil? || item['deploy_id'] == values[':old_deploy_id']
-
-      item.merge!('deploy_id' => values[':new_deploy_id'], 'deploy_asg_name' => values[':deploy_asg'])
-    when config::ASSERT_ACTIVE_UPDATE_EXPR
-      return conditional_failure unless item['deploy_id'] == values[':deploy_id']
-    when config::SET_PROD_ASG_UPDATE_EXPR
-      return conditional_failure unless item['deploy_id'] == values[':deploy_id']
-
-      item.merge!('production_asg_name' => values[':prod_asg'], 'deploy_asg_name' => '',
-                  'undeploy_state' => values[':undeploy_state'])
-    else
-      raise "DeployWorld: unhandled update_item #{ctx.params[:update_expression]}"
+    guarded_write(ctx) do |values, names|
+      ctx.params[:update_expression].delete_prefix('SET ').split(', ').each do |assignment|
+        name, value = assignment.split(' = ')
+        item[names.fetch(name)] = values.fetch(value)
+      end
+      { attributes: copy(item) }
     end
-    { attributes: copy(item) }
+  end
+
+  def delete_item(ctx)
+    guarded_write(ctx) do
+      deleted = copy(item)
+      item.clear
+      { attributes: deleted }
+    end
+  end
+
+  def guarded_write(ctx)
+    record(ctx)
+    params = ctx.params
+    guard = GUARDS.fetch([params[:update_expression], params[:condition_expression]]) do
+      raise "DeployWorld: no guard for #{params[:update_expression]} IF #{params[:condition_expression]}"
+    end
+    # The dynamodb client rewrites plain values to {s: 'x'} before a stub sees them.
+    values = params[:expression_attribute_values].transform_values { |v| v.is_a?(Hash) ? v.values.first : v }
+    names = params[:expression_attribute_names]
+
+    return conditional_failure unless guard.call(->(name) { item[names.fetch(name)] }, values)
+
+    yield values, names
   end
 
   def autoscaling_stubs
@@ -246,7 +306,7 @@ class DeployWorld
       describe_target_health: lambda do |ctx|
         record(ctx)
         arn = ctx.params[:target_group_arn]
-        { target_health_descriptions: Array.new(3) do |i|
+        { target_health_descriptions: Array.new([3, healthy[arn]].max) do |i|
           { target: { id: "i-0#{i}", port: 80 }, target_health: { state: i < healthy[arn] ? 'healthy' : 'initial' } }
         end }
       end,
@@ -256,7 +316,12 @@ class DeployWorld
         { rules: copy(found) }
       end,
       create_rule: ->(ctx) { create_rule(ctx) },
-      modify_rule: ->(ctx) { modify_rule(ctx) }
+      modify_rule: ->(ctx) { modify_rule(ctx) },
+      delete_rule: lambda do |ctx|
+        record(ctx)
+        rules.delete(rule(ctx.params[:rule_arn]))
+        {}
+      end
     }
   end
 
@@ -264,7 +329,7 @@ class DeployWorld
     record(ctx)
     name = ctx.params[:name]
     arn = "arn:aws:elasticloadbalancing:us-east-1:111111111111:targetgroup/#{name}/new"
-    created = target_group(arn, name)
+    created = build_target_group(arn, name)
     target_groups[arn] = created
     @tags[arn] = ctx.params[:tags]
     { target_groups: [copy(created)] }
@@ -358,7 +423,7 @@ class DeployWorld
     }
   end
 
-  def target_group(arn, name)
+  def build_target_group(arn, name)
     {
       target_group_arn: arn, target_group_name: name, protocol: 'HTTP', protocol_version: 'HTTP1', port: 80,
       vpc_id: 'vpc-0abc', health_check_protocol: 'HTTP', health_check_port: 'traffic-port',

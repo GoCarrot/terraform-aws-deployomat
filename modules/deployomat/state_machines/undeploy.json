@@ -40,7 +40,7 @@
       "End": true,
       "Parameters": {
         "Status": "fail",
-        "Error.$": "$.Error"
+        "Error.$": "$.StartResult.Error"
       }
     },
     "Fail": {

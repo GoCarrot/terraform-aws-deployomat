@@ -109,7 +109,6 @@ module Deployomat
     ID_NAME = 'deploy_id'
     ASG_NAME = 'deploy_asg_name'
     UNDEPLOY_STATE_NAME = 'undeploy_state'
-    DEPLOY_NAME = 'deploy_asg'
     PROD_ASG_NAME = 'production_asg_name'
 
     attr_reader :account_canonical_slug, :account_name, :service_name, :prefix,
@@ -212,6 +211,27 @@ module Deployomat
       ).attributes
     end
 
+    CLEAR_DEPLOY_ASG_UPDATE_EXPR = "SET #{ASG_VAR} = #{EMPTY_KEY}"
+    CLEAR_DEPLOY_ASG_CONDITION_EXPR = "#{ID_VAR} = #{ID_KEY}"
+
+    def clear_deploy_asg
+      @config = @client.update_item(
+        table_name: ENV['DEPLOYOMAT_TABLE'],
+        return_values: 'ALL_NEW',
+        key: { 'id' => @primary_key },
+        update_expression: CLEAR_DEPLOY_ASG_UPDATE_EXPR,
+        condition_expression: CLEAR_DEPLOY_ASG_CONDITION_EXPR,
+        expression_attribute_names: {
+          ID_VAR => ID_NAME,
+          ASG_VAR => ASG_NAME
+        },
+        expression_attribute_values: {
+          ID_KEY => @deploy_id,
+          EMPTY_KEY => ''
+        }
+      ).attributes
+    end
+
     ASSERT_START_UNDEPLOY_UPDATE_EXPR = "SET #{ID_VAR} = #{NEW_ID_KEY}, #{UNDEPLOY_VAR} = #{UNDEPLOY_KEY}"
     ASSERT_START_UNDEPLOY_CONDITION_EXPR = "(attribute_not_exists(#{ID_VAR}) OR #{ID_VAR} = #{OLD_ID_KEY}) AND (attribute_not_exists(#{ASG_VAR}) OR #{ASG_VAR} = #{EMPTY_KEY}) AND (#{UNDEPLOY_VAR} = #{ALLOW_KEY} OR #{UNDEPLOY_VAR} = #{UNDEPLOY_KEY})"
 
@@ -224,7 +244,7 @@ module Deployomat
         condition_expression: ASSERT_START_UNDEPLOY_CONDITION_EXPR,
         expression_attribute_names: {
           ID_VAR => ID_NAME,
-          ASG_VAR => DEPLOY_NAME,
+          ASG_VAR => ASG_NAME,
           UNDEPLOY_VAR => UNDEPLOY_STATE_NAME
         },
         expression_attribute_values: {
@@ -733,9 +753,8 @@ module Deployomat
       deploy_forward = forwards.find { |tg_conf| tg_conf[:target_group_arn] == deploy_tg_arn }
 
       # TODO: Assert forwards.length == 2, production_forward exists, deploy_forward exists
-      # TODO: clamp weights to [0, 100]
-      production_forward[:weight] -= amount
-      deploy_forward[:weight] += amount
+      production_forward[:weight] = (production_forward[:weight] - amount).clamp(0, 100)
+      deploy_forward[:weight] = (deploy_forward[:weight] + amount).clamp(0, 100)
 
       modify_rule(new_rule)
     end
