@@ -1,3 +1,9 @@
+## 0.4.1
+
+FEATURES:
+
+* New `notification_log` module. It writes one structured notification (`teak.deploy.notification/1`) per deploy, cancel or undeploy transition to its own CloudWatch log group, and creates a role that can only read that group. It's the same EventBridge rule as `slack_notifier`, so both can run side by side. Cancels that a deploy or undeploy started are skipped, so a failed deploy is one finish line.
+
 ## 0.4.0
 
 BREAKING CHANGES:
