@@ -25,6 +25,11 @@ namespace :spec do
   task :slack_notifier do
     sh 'bundle exec rspec modules/slack_notifier/spec --format documentation --color'
   end
+
+  desc 'Run tests for notification_log module'
+  task :notification_log do
+    sh 'bundle exec rspec modules/notification_log/spec --format documentation --color'
+  end
 end
 
 # Terraform tasks
