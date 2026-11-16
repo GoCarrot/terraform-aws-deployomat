@@ -22,6 +22,10 @@ module "notification_log" {
 }
 ```
 
+## Plan and apply in separate runs
+
+The Lambda zip is built by `archive_file` during plan, at `<module path>/build/notification_log.zip`. A saved plan doesn't build it again at apply. If your pipeline saves the plan and applies it in a later job (deployinator's CircleCI does), carry that file across too, the same way you carry `deployomat`'s `lambda.zip` and `slack_notifier`'s `slack_notify.zip`, or the apply can't find it.
+
 ## Reading
 
 Assume `module.notification_log.reader_role` and read the log group:
