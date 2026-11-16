@@ -160,4 +160,44 @@ RSpec.describe NotificationEvent do
       expect(Time.iso8601(build(event)['time'])).to be_within(60).of(Time.now)
     end
   end
+
+  # fixtures/aws_documented_events.json holds the sample "Step Functions Execution Status
+  # Change" events from AWS's documentation, copied verbatim (including its quirks, like the
+  # "arn:aws::states" in the RUNNING sample) on 2026-11-16 from
+  # https://docs.aws.amazon.com/step-functions/latest/dg/eventbridge-integration.html
+  # Everything above is shaped by us; these are shaped by AWS. A captured event from a live
+  # deploy should replace or join them once the module is applied.
+  describe "AWS's documented events" do
+    let(:documented) do
+      JSON.parse(File.read(File.join(__dir__, 'fixtures', 'aws_documented_events.json')))
+          .to_h { |event| [event.dig('detail', 'status'), event] }
+    end
+
+    it 'covers the five statuses the page shows' do
+      expect(documented.keys).to contain_exactly('RUNNING', 'SUCCEEDED', 'FAILED', 'TIMED_OUT', 'ABORTED')
+    end
+
+    it 'maps each to a notification, carrying the event id and time through' do
+      documented.each_value do |event|
+        expect(build(event)).to include('event_id' => event['id'], 'time' => event['time'],
+                                        'execution' => 'execution-name')
+      end
+    end
+
+    it 'reads RUNNING as started and FAILED as failed with its error and cause' do
+      expect(build(documented['RUNNING'])).to include('phase' => 'started', 'errors' => [])
+      expect(build(documented['FAILED']))
+        .to include('phase' => 'failed', 'errors' => ['ErrorCode', 'An error occurred.'])
+    end
+
+    it 'does not take a non-object output, or empty input, for a deploy result' do
+      note = build(documented['SUCCEEDED'])
+      expect(note).to include('phase' => 'unknown', 'service' => 'unknown', 'ami' => nil)
+    end
+
+    it 'treats TIMED_OUT and ABORTED as unknown, not as a clean finish' do
+      expect(build(documented['TIMED_OUT'])).to include('phase' => 'unknown')
+      expect(build(documented['ABORTED'])).to include('phase' => 'unknown')
+    end
+  end
 end
