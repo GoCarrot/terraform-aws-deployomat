@@ -154,6 +154,14 @@ RSpec.describe NotificationEvent do
       expect(build(event)).to include('service' => 'unknown')
     end
 
+    it 'copes with input that is JSON but not an object' do
+      ['[]', '"text"', '3'].each do |json|
+        event = sfn_event('RUNNING')
+        event['detail']['input'] = json
+        expect(build(event)).to include('phase' => 'started', 'service' => 'unknown')
+      end
+    end
+
     it 'stamps the time when the event has none' do
       event = sfn_event('RUNNING')
       event.delete('time')
