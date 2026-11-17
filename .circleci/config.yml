@@ -113,7 +113,6 @@ workflows:
                 - main
                 - master
 
-      # Tag the commit when its subject is `Promote to: vX.Y.Z`, after tests pass on main.
       - promote:
           requires:
             - test
