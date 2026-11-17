@@ -71,10 +71,7 @@ module NotificationEvent
     }
   end
 
-  # Deployomat puts its own events for a deploy: started once it knows the AMI, and the
-  # ending from its Report step, which marks a run whose event landed. A deploy's status event
-  # is then only a backstop, for what deployomat didn't report: a timeout, a console stop, a
-  # crash, or an event that didn't land. True when the status event is already covered.
+  # True when deployomat already reported this deploy run itself (see its README, "Deploy events").
   def self.reported_by_deployomat?(event, kind)
     return false unless kind == 'deploy'
 

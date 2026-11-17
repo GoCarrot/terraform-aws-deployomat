@@ -230,10 +230,11 @@ RSpec.describe SlackNotify do
         .to_return(status: 200, body: { ok: true }.to_json)
     end
 
-    it 'handles deploy state machine events deployomat did not report' do
-      event = deploy_event.merge('detail' => deploy_event['detail'].merge('status' => 'TIMED_OUT'))
-      result = described_class.handler(event: event, context: {})
-      expect(result).to include('Successfully notified')
+    it 'reports deploy status events deployomat did not: a timeout, an unmarked failure' do
+      [{ 'status' => 'TIMED_OUT' }, { 'status' => 'FAILED', 'error' => 'States.Runtime' }].each do |change|
+        event = deploy_event.merge('detail' => deploy_event['detail'].merge(change))
+        expect(described_class.handler(event: event, context: {})).to include('Successfully notified')
+      end
     end
 
     it 'skips deploy status events deployomat reported, without calling Slack' do
@@ -251,12 +252,6 @@ RSpec.describe SlackNotify do
                                        context: {})).to eq('Skipping notification: deployomat reported it.')
       end
       expect(a_request(:post, 'https://slack.com/api/chat.postMessage')).not_to have_been_made
-    end
-
-    it 'still reports a Step Functions failure deployomat did not' do
-      event = deploy_event.merge('detail' => deploy_event['detail'].merge('status' => 'FAILED',
-                                                                          'error' => 'States.Runtime'))
-      expect(described_class.handler(event: event, context: {})).to include('Successfully notified')
     end
 
     it 'posts nothing for a deploy-source event that is not a deploy notification' do

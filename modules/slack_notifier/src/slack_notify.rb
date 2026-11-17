@@ -28,10 +28,7 @@ module SlackNotify
   REPORTED_ERROR = 'Deployomat.Reported'
   DEPLOY_PHASES = { 'started' => 'Started', 'completed' => 'Completed', 'aborted' => 'Aborted', 'failed' => 'Failed' }
 
-  # Deployomat puts its own events for a deploy: started once it knows the AMI, and the
-  # ending from its Report step, which marks a run whose event landed. A deploy's status event
-  # is then only a backstop, for what deployomat didn't report: a timeout, a console stop, a
-  # crash, or an event that didn't land.
+  # True when deployomat already reported this deploy run itself (see its README, "Deploy events").
   def self.reported_by_deployomat?(event)
     detail = event['detail']
     case detail['status']
@@ -50,8 +47,7 @@ module SlackNotify
     {}
   end
 
-  # Only deploy notifications. Cancels and undeploys will share the source (C-2430), and
-  # their messages read differently.
+  # Only deploy notifications; other kinds read differently.
   def self.deploy_notification?(note)
     note.is_a?(Hash) && note['schema'] == 'teak.deploy.notification/1' && note['kind'] == 'deploy'
   end
@@ -83,7 +79,6 @@ module SlackNotify
     status = detail['status']
     deployment_base = "Deploy #{input['ServiceName']} to #{input['AccountCanonicalSlug']}"
     deployment_details = "(AMI <https://console.aws.amazon.com/ec2/v2/home?region=#{ENV['AWS_REGION']}#ImageDetails:imageId=#{input['AmiId']}|#{input['AmiId']}>, Execution <https://console.aws.amazon.com/states/home?region=#{ENV['AWS_REGION']}#/executions/details/#{detail['executionArn']}|#{detail['name']}>)"
-    # RUNNING never gets here: deployomat's own started event says it (see handler).
     if status == 'UPDATE'
       return { text: nil } if skip_notifications
       update = detail['updates']
