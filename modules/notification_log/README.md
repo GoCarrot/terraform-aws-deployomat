@@ -6,7 +6,7 @@ It follows `slack_notifier`: the same EventBridge rule on Step Functions executi
 
 A cancel that a deploy or undeploy started (a concurrent-deploy cancel, a rollback) is not logged; its parent reports. A deploy that ends `SUCCEEDED` with output status `fail` is logged as `failed`.
 
-Deploys are reported by deployomat itself (see "Deploy events" in the deployomat module README). The rule also matches those events (`deploy_event`, defaulting to the deployomat module's `deploy_event` output), and the Lambda logs their detail as it arrives. A deploy's status events are only a backstop: `RUNNING`, a `SUCCEEDED` run marked `Reported`, and a `FAILED` run with error `Deployomat.Reported` are skipped, and anything else (a timeout, a console stop, a crash, an event that didn't land) is logged from the status event. Release this module with a deployomat that puts deploy events, or deploys lose their started lines.
+Deploys are reported by deployomat itself (see "Deploy events" in the deployomat module README). The rule also matches those events (`deploy_event`, defaulting to the deployomat module's `deploy_event` output), and the Lambda logs their detail as it arrives. A deploy's status events are only a backstop: `RUNNING`, a `SUCCEEDED` run marked `Reported`, and a `FAILED` run with error `Deployomat.Reported` are skipped, and anything else (a timeout, a console stop, a crash, a finished event that didn't land) is logged from the status event. Release this module with a deployomat that puts deploy events, or deploys lose their started lines.
 
 ## Usage
 

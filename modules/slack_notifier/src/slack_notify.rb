@@ -36,10 +36,24 @@ module SlackNotify
     detail = event['detail']
     case detail['status']
     when 'RUNNING' then true
-    when 'SUCCEEDED' then (JSON.parse(detail['output'].to_s) rescue {})['Reported'] == true
+    when 'SUCCEEDED' then parse_object(detail['output'])['Reported'] == true
     when 'FAILED' then detail['error'] == REPORTED_ERROR
     else false
     end
+  end
+
+  # Output and input arrive as JSON strings, and may be missing or not an object.
+  def self.parse_object(json)
+    parsed = JSON.parse(json.to_s)
+    parsed.is_a?(Hash) ? parsed : {}
+  rescue JSON::ParserError
+    {}
+  end
+
+  # Only deploy notifications. Cancels and undeploys will share the source (C-2430), and
+  # their messages read differently.
+  def self.deploy_notification?(note)
+    note.is_a?(Hash) && note['schema'] == 'teak.deploy.notification/1' && note['kind'] == 'deploy'
   end
 
   # One of deployomat's own deploy events: a teak.deploy.notification/1 with the deployed AMI
@@ -69,10 +83,8 @@ module SlackNotify
     status = detail['status']
     deployment_base = "Deploy #{input['ServiceName']} to #{input['AccountCanonicalSlug']}"
     deployment_details = "(AMI <https://console.aws.amazon.com/ec2/v2/home?region=#{ENV['AWS_REGION']}#ImageDetails:imageId=#{input['AmiId']}|#{input['AmiId']}>, Execution <https://console.aws.amazon.com/states/home?region=#{ENV['AWS_REGION']}#/executions/details/#{detail['executionArn']}|#{detail['name']}>)"
-    if status == 'RUNNING'
-      return { text: nil } if skip_notifications
-      { text: "#{deployment_base}: Started #{deployment_details}" }
-    elsif status == 'UPDATE'
+    # RUNNING never gets here: deployomat's own started event says it (see handler).
+    if status == 'UPDATE'
       return { text: nil } if skip_notifications
       update = detail['updates']
       return { text: "#{deployment_base}: Update #{deployment_details}\n\n#{update.join("\n")}"}
@@ -84,10 +96,11 @@ module SlackNotify
         { text: "#{deployment_base}: Completed #{deployment_details}" }
       elsif out_status == 'deploy_aborted'
         text = "#{deployment_base}: Aborted #{deployment_details}"
-        text = "#{text}\n\n#{output['Error'].join("\n")}" if output.key?('Error')
+        # CancelledDeploy's Error is a String, not a list.
+        text = "#{text}\n\n#{Array(output['Error']).join("\n")}" if output.key?('Error')
         { text: text }
       elsif out_status == 'fail'
-        { text: "#{deployment_base}: Failed #{deployment_details}\n\n#{output['Error'].join("\n")}" }
+        { text: "#{deployment_base}: Failed #{deployment_details}\n\n#{Array(output['Error']).join("\n")}" }
       else
         { text: "#{deployment_base}: Unknown success result #{deployment_details}: #{out_status}" }
       end
@@ -192,7 +205,9 @@ module SlackNotify
       channel: ENV['SLACK_CHANNEL'],
     }
     if event['source'] == ENV.fetch('DEPLOY_EVENT_SOURCE', 'omat.deployomat')
-      return notify(request.merge!(notification_for_deploy_event(event['detail'] || {})))
+      return 'Skipping notification: not a deploy notification.' unless deploy_notification?(event['detail'])
+
+      return notify(request.merge!(notification_for_deploy_event(event['detail'])))
     end
 
     execution_arn = event.dig('resources', 0)
