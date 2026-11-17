@@ -139,13 +139,25 @@ RSpec.describe NotificationLog do
       expect(err).to match(/could not describe ami-0abc: Aws::EC2::Errors::UnauthorizedOperation/)
     end
 
-    it 'still logs the notification when the AMI is not visible at all' do
-      ec2.stub_responses(:describe_images, images: [])
+    it 'still logs the notification, and says it was not found or not shared, when EC2 has no such AMI for it' do
+      ec2.stub_responses(:describe_images, 'InvalidAMIID.NotFound')
       note = nil
       err = stderr_of { note = note_for }
       expect(note).to include('ami' => 'ami-0abc')
       expect(note).not_to have_key('commit')
-      expect(err).to match(/ami-0abc not found/)
+      expect(err).to include('ami-0abc not found, or not shared with this account')
+      expect(err).not_to match(/could not describe/)
+    end
+
+    it 'does not look anything up for an AmiId that is a command, not an AMI' do
+      ['$name-prefix:carrot', '$launchtemplate:$LatestMinus:1'].each do |command|
+        note = nil
+        err = stderr_of { note = note_for(event_for('deploy', input: input.merge('AmiId' => command))) }
+        expect(note).to include('ami' => command)
+        expect(note).not_to have_key('commit')
+        expect(err).to eq('')
+      end
+      expect(Aws::EC2::Client).not_to have_received(:new)
     end
 
     it 'does not look anything up when there is no AMI, as for an undeploy' do
