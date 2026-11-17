@@ -79,6 +79,41 @@ RSpec.describe Deployomat::DeployEvent do
     end
   end
 
+  describe 'the clients' do
+    # StartDeploy has 60s for everything; reporting must not be what times it out.
+    # Stubbed, so building a client doesn't go looking for credentials.
+    around do |example|
+      had_stubs = Aws.config.key?(:stub_responses)
+      Aws.config.update(stub_responses: true) unless had_stubs
+      example.run
+    ensure
+      Aws.config.delete(:stub_responses) unless had_stubs
+    end
+
+    it 'give up within seconds: no retry on the lookup, one on the put' do
+      ec2 = described_class::EC2_OPTIONS
+      events = described_class::EVENTS_OPTIONS
+      worst = ->(opts) { (opts[:retry_limit] + 1) * (opts[:http_open_timeout] + opts[:http_read_timeout]) }
+
+      expect(ec2).to include(retry_limit: 0)
+      expect(events).to include(retry_limit: 1)
+      expect(worst[ec2] + worst[events]).to be <= 10
+    end
+
+    it 'are built with those options, once' do
+      described_class.instance_variable_set(:@ec2_client, nil)
+      described_class.instance_variable_set(:@events_client, nil)
+
+      ec2 = described_class.ec2_client
+      events = described_class.events_client
+
+      expect(ec2.config).to have_attributes(retry_limit: 0, http_open_timeout: 1, http_read_timeout: 2)
+      expect(events.config).to have_attributes(retry_limit: 1, http_open_timeout: 1, http_read_timeout: 2)
+      expect(described_class.ec2_client).to be(ec2)
+      expect(described_class.events_client).to be(events)
+    end
+  end
+
   describe '.publish' do
     let(:events) { Aws::EventBridge::Client.new(stub_responses: true) }
     let(:detail) do

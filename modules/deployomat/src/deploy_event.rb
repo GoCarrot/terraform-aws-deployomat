@@ -34,13 +34,28 @@ module Deployomat
     SOURCE = 'omat.deployomat'
     DETAIL_TYPE = 'Deployomat Deploy'
 
+    # Reporting runs inline in StartDeploy, whose Lambda has 60s and still has to clone a
+    # target group and an ASG. A Lambda timeout is caught by the state machine, not here, and
+    # rolls the deploy back, so a stalled EC2 or EventBridge must cost seconds, not tens of
+    # them. Worst case: 3s for the lookup (no retry), 6s for the put (one retry).
+    EC2_OPTIONS = { retry_limit: 0, http_open_timeout: 1, http_read_timeout: 2 }.freeze
+    EVENTS_OPTIONS = { retry_limit: 1, http_open_timeout: 1, http_read_timeout: 2 }.freeze
+
+    def self.ec2_client
+      @ec2_client ||= Aws::EC2::Client.new(**EC2_OPTIONS)
+    end
+
+    def self.events_client
+      @events_client ||= Aws::EventBridge::Client.new(**EVENTS_OPTIONS)
+    end
+
     # Tags on an AMI, as seen with this Lambda's own credentials. Only the AMI's owner sees
     # its tags (an account it's shared with gets none), and deployomat runs in the account
     # that builds the AMIs, so this must not use the workload deploy role.
     def self.ami_tags(ami_id, client: nil)
       return {} unless ami_id.to_s.start_with?('ami-')
 
-      client ||= Aws::EC2::Client.new(retry_limit: 1, http_open_timeout: 2, http_read_timeout: 5)
+      client ||= ec2_client
       image = client.describe_images(image_ids: [ami_id]).images.first
       return warn_empty("#{ami_id} not found") if image.nil?
 
@@ -76,7 +91,7 @@ module Deployomat
     # True only when EventBridge accepted the entry. put_events answers 200 with a failed
     # entry count, so a bare success isn't enough.
     def self.publish(detail, client: nil)
-      client ||= Aws::EventBridge::Client.new(retry_limit: 2, http_open_timeout: 2, http_read_timeout: 5)
+      client ||= events_client
       response = client.put_events(
         entries: [{
           source: SOURCE,
