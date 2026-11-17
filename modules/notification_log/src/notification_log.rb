@@ -15,6 +15,7 @@
 # limitations under the License.
 
 require 'json'
+require_relative 'ami_commit'
 require_relative 'notification_event'
 
 # Lambda handler. Turns each Step Functions execution status change that the module's rule
@@ -42,6 +43,10 @@ module NotificationLog
 
     notification = NotificationEvent.build(event, kind)
     return 'Skipping notification.' if notification.nil?
+
+    # Which commit is going out, when the AMI says. Left out, not nil, when it can't be found.
+    commit = AmiCommit.lookup(notification['ami'], region: event['region'] || ENV.fetch('AWS_REGION', nil), account: event['account'])
+    notification['commit'] = commit if commit
 
     $stdout.puts(JSON.generate(notification))
     "Logged #{notification['phase']} for #{notification['service']}"

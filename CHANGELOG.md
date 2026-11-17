@@ -1,3 +1,10 @@
+## 0.4.2
+
+FEATURES:
+
+* `notification_log` notifications now carry `commit`, the AMI's `BuildCommit` tag, so a reader can say which commit a deploy rolls out. It is left out when the AMI has no tag, isn't visible to the Lambda, or the lookup fails. The Lambda logs which, on a line starting `ami commit:`. Tags only show to the account that owns the AMI. The schema is still `teak.deploy.notification/1`; readers that don't know `commit` are unaffected.
+* The `notification_log` Lambda role the module creates gains `ec2:DescribeImages`. A role passed in as `lambda_iam_role_arn` needs it too, or notifications carry no commit.
+
 ## 0.4.1
 
 FEATURES:

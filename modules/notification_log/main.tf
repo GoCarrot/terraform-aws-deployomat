@@ -64,13 +64,22 @@ data "aws_iam_policy_document" "lambda-logging" {
   }
 }
 
+# Read-only, and it can't be scoped to a resource. The Lambda reads the BuildCommit tag of the
+# AMI being deployed. Without this the notification still logs, just without a commit.
+data "aws_iam_policy_document" "lambda-describe-images" {
+  statement {
+    actions   = ["ec2:DescribeImages"]
+    resources = ["*"]
+  }
+}
+
 resource "aws_iam_role" "notification-log" {
   count = var.lambda_iam_role_arn == null ? 1 : 0
 
   name               = local.lambda_name
   assume_role_policy = data.aws_iam_policy_document.allow-lambda-assume.json
 
-  description = "Role for the deploy notification logger. Only permissions should be logging."
+  description = "Role for the deploy notification logger. Only permissions should be logging and describing images."
 
   tags = local.tags
 }
@@ -91,6 +100,24 @@ resource "aws_iam_role_policy_attachment" "notification-log" {
 
   role       = aws_iam_role.notification-log[count.index].name
   policy_arn = aws_iam_policy.lambda-logging[count.index].arn
+}
+
+resource "aws_iam_policy" "lambda-describe-images" {
+  count = var.lambda_iam_role_arn == null ? 1 : 0
+
+  name   = "${local.lambda_name}DescribeImages"
+  policy = data.aws_iam_policy_document.lambda-describe-images.json
+
+  description = "Allows ${local.lambda_name} to read the tags of the AMI being deployed."
+
+  tags = local.tags
+}
+
+resource "aws_iam_role_policy_attachment" "notification-log-describe-images" {
+  count = var.lambda_iam_role_arn == null ? 1 : 0
+
+  role       = aws_iam_role.notification-log[count.index].name
+  policy_arn = aws_iam_policy.lambda-describe-images[count.index].arn
 }
 
 # The notifications are this log group's contents, so the group is not optional.
@@ -132,7 +159,8 @@ resource "aws_lambda_function" "notification-log" {
 
   depends_on = [
     aws_cloudwatch_log_group.lambda,
-    aws_iam_role_policy_attachment.notification-log
+    aws_iam_role_policy_attachment.notification-log,
+    aws_iam_role_policy_attachment.notification-log-describe-images
   ]
 }
 

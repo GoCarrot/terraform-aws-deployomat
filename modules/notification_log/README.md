@@ -42,7 +42,10 @@ The log group also holds the Lambda's own START/END/REPORT lines, hence the filt
 ```json
 {"schema":"teak.deploy.notification/1","event_id":"...","time":"2026-11-16T22:00:00Z",
  "kind":"deploy","phase":"started","service":"carrot","account":"production",
- "ami":"ami-0abc","execution":"...","execution_arn":"...","errors":[],"skip_notifications":false}
+ "ami":"ami-0abc","commit":"09c4f525a1b2c3d4e5f60718293a4b5c6d7e8f90",
+ "execution":"...","execution_arn":"...","errors":[],"skip_notifications":false}
 ```
 
 `kind` is `deploy`, `cancel` or `undeploy`. `phase` is `started`, `completed`, `failed`, `aborted` or `unknown`. `skip_notifications` mirrors `DeployConfig.SkipNotifications`; it is passed through, not acted on.
+
+`commit` is the value of the AMI's `BuildCommit` tag, which the image builds set to the commit they built from. It is passed through as is (a build outside CI says `in-dev`), and left out when the Lambda can't read it: no `ami` (an undeploy), no tag, or the lookup failed. The reason goes to the Lambda's log, as a line starting `ami commit:`. One reason to know about: EC2 doesn't show tags to an account an AMI is only shared with, so this works only when the Lambda's account owns the AMIs. The Lambda role needs `ec2:DescribeImages`; the module adds it when it creates the role. A service that bakes in code from elsewhere, like thezoo with teakflake, has the commit of the image build, not of that code.

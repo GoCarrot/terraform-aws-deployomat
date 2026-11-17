@@ -67,7 +67,7 @@ variable "log_retention_in_days" {
 
 variable "lambda_iam_role_arn" {
   type        = string
-  description = "The ARN of an IAM role to assign to the created lambda. The only required permissions are for logging. If null, this module will create a suitable IAM role and policy."
+  description = "The ARN of an IAM role to assign to the created lambda. The required permissions are logging, and ec2:DescribeImages to add the AMI's commit to each notification (without it notifications have no commit). If null, this module will create a suitable IAM role and policy."
   default     = null
 }
 
