@@ -24,6 +24,42 @@ module SlackNotify
     'Authorization' => "Bearer #{ENV['SLACK_BOT_TOKEN']}"
   }
 
+  # The error of a deploy run that failed after deployomat reported it (deploy.json FailReported).
+  REPORTED_ERROR = 'Deployomat.Reported'
+  DEPLOY_PHASES = { 'started' => 'Started', 'completed' => 'Completed', 'aborted' => 'Aborted', 'failed' => 'Failed' }
+
+  # Deployomat puts its own events for a deploy: started once it knows the AMI, and the
+  # ending from its Report step, which marks a run whose event landed. A deploy's status event
+  # is then only a backstop, for what deployomat didn't report: a timeout, a console stop, a
+  # crash, or an event that didn't land.
+  def self.reported_by_deployomat?(event)
+    detail = event['detail']
+    case detail['status']
+    when 'RUNNING' then true
+    when 'SUCCEEDED' then (JSON.parse(detail['output'].to_s) rescue {})['Reported'] == true
+    when 'FAILED' then detail['error'] == REPORTED_ERROR
+    else false
+    end
+  end
+
+  # One of deployomat's own deploy events: a teak.deploy.notification/1 with the deployed AMI
+  # and its tags. Same text as the status-event message, plus the commit the AMI was built from.
+  def self.notification_for_deploy_event(note)
+    phase = note['phase']
+    return { text: nil } if note['skip_notifications'] && %w[started completed].include?(phase)
+
+    ami = note['ami']
+    ami_text = ami ? "AMI <https://console.aws.amazon.com/ec2/v2/home?region=#{ENV['AWS_REGION']}#ImageDetails:imageId=#{ami}|#{ami}>" : "AMI #{note['ami_requested'] || 'unknown'}"
+    commit = note.dig('ami_tags', 'BuildCommit').to_s
+    commit_text = commit.match?(/\A\h{7,40}\z/) ? ", commit #{commit[0, 7]}" : ''
+    details = "(#{ami_text}#{commit_text}, Execution <https://console.aws.amazon.com/states/home?region=#{ENV['AWS_REGION']}#/executions/details/#{note['execution_arn']}|#{note['execution']}>)"
+    label = DEPLOY_PHASES.fetch(phase) { "Unknown result #{phase}" }
+    text = "Deploy #{note['service']} to #{note['account']}: #{label} #{details}"
+    errors = Array(note['errors'])
+    text = "#{text}\n\n#{errors.join("\n")}" if %w[failed aborted].include?(phase) && !errors.empty?
+    { text: text }
+  end
+
   def self.notification_for_event(event)
     detail = event['detail']
     input = JSON.parse(detail['input'])
@@ -155,9 +191,15 @@ module SlackNotify
     request = {
       channel: ENV['SLACK_CHANNEL'],
     }
+    if event['source'] == ENV.fetch('DEPLOY_EVENT_SOURCE', 'omat.deployomat')
+      return notify(request.merge!(notification_for_deploy_event(event['detail'] || {})))
+    end
+
     execution_arn = event.dig('resources', 0)
     sfn_arn = execution_arn.gsub(':execution:', ':stateMachine:').match(/\A(.*):[^:]*\z/)[1]
     if sfn_arn == ENV['DEPLOY_SFN_ARN']
+      return 'Skipping notification: deployomat reported it.' if reported_by_deployomat?(event)
+
       request.merge!(notification_for_event(event))
     elsif sfn_arn == ENV['UNDEPLOY_SFN_ARN']
       request.merge!(notification_for_undeploy(event))

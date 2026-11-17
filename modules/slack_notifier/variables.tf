@@ -60,6 +60,18 @@ variable "undeploy_sfn" {
   description = "The undeploy step functions state machine."
 }
 
+variable "deploy_event" {
+  type = object({
+    source      = string
+    detail_type = string
+  })
+  description = "The source and detail-type of deployomat's own deploy events: the deployomat module's deploy_event output."
+  default = {
+    source      = "omat.deployomat"
+    detail_type = "Deployomat Deploy"
+  }
+}
+
 variable "custom_update_event_source" {
   type        = string
   description = "The custom event source used for in-progress update notifications"

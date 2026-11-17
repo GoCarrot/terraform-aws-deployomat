@@ -122,9 +122,10 @@ resource "aws_lambda_function" "notification-log" {
 
   environment {
     variables = {
-      DEPLOY_SFN_ARN   = var.deploy_sfn.arn
-      CANCEL_SFN_ARN   = var.cancel_sfn != null ? var.cancel_sfn.arn : ""
-      UNDEPLOY_SFN_ARN = var.undeploy_sfn.arn
+      DEPLOY_SFN_ARN      = var.deploy_sfn.arn
+      CANCEL_SFN_ARN      = var.cancel_sfn != null ? var.cancel_sfn.arn : ""
+      UNDEPLOY_SFN_ARN    = var.undeploy_sfn.arn
+      DEPLOY_EVENT_SOURCE = var.deploy_event.source
     }
   }
 
@@ -137,13 +138,14 @@ resource "aws_lambda_function" "notification-log" {
 }
 
 # Same pattern as the slack_notifier rule, under its own name so both can live in one account.
+# Deployomat's deploy events carry the execution ARN in resources too, so one pattern covers both.
 resource "aws_cloudwatch_event_rule" "deploy-run" {
   name        = "${var.deploy_sfn.name}NotificationLog"
-  description = "Matches all execution state changes on the deploy, undeploy and cancel state machines, to log them as deploy notifications"
+  description = "Matches deployomat's deploy events and all execution state changes on the deploy, undeploy and cancel state machines, to log them as deploy notifications"
 
   event_pattern = jsonencode({
-    source      = ["aws.states"],
-    detail-type = ["Step Functions Execution Status Change"],
+    source      = ["aws.states", var.deploy_event.source],
+    detail-type = ["Step Functions Execution Status Change", var.deploy_event.detail_type],
     resources   = [for arn in compact([var.deploy_sfn.arn, var.undeploy_sfn.arn, var.cancel_sfn != null ? var.cancel_sfn.arn : null]) : { prefix = "${replace(arn, ":stateMachine:", ":execution:")}:" }]
   })
 

@@ -36,6 +36,18 @@ variable "undeploy_sfn" {
   description = "The undeploy step functions state machine."
 }
 
+variable "deploy_event" {
+  type = object({
+    source      = string
+    detail_type = string
+  })
+  description = "The source and detail-type of deployomat's own deploy events: the deployomat module's deploy_event output."
+  default = {
+    source      = "omat.deployomat"
+    detail_type = "Deployomat Deploy"
+  }
+}
+
 variable "reader_account_ids" {
   type        = list(string)
   description = "IDs of AWS accounts to trust to assume the reader role. IAM policies inside those accounts should control who may."

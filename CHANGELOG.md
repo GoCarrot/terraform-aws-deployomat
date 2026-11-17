@@ -4,6 +4,11 @@ ENHANCEMENTS:
 
 * `deployomat` can put its own deploy events on the default EventBridge bus (source `omat.deployomat`, detail-type `Deployomat Deploy`, new `deploy_event` output). The detail is a `teak.deploy.notification/1` with the deployed AMI and all its tags (`ami_tags`). The Lambda role gains `ec2:DescribeImages`, because only the AMI's owner sees its tags, and `events:PutEvents` on the default bus for that source only.
 * A deploy puts a `started` event once it has resolved its AMI, and a finished event (`completed`, `failed`, `aborted`) from the step that ended the run, or from a new `Report` step after a rollback. Each event names the `step` that put it and that step's `status`. Rollout also puts a `progress` event after each traffic shift, with a free-form `progress` line ("Shifted 40% of traffic to the new ASG"). A run whose finished event landed ends with `"Reported": true` in its output, or, if it failed, with the error `Deployomat.Reported` instead of an unnamed failure. Nothing waits on the execution today, so no caller sees a difference. A started event that doesn't land has no backstop. See "Deploy events" in the module README.
+* `notification_log` and `slack_notifier` report deploys from deployomat's own events (new `deploy_event` variable, defaulting to the deployomat module's names). A deploy's Step Functions status events are only a backstop: they're skipped when deployomat reported the run, and still reported for a timeout, a console stop, a crash, or a finished event that didn't land. Slack deploy messages name the AMI actually launched and the short `BuildCommit`. Cancels and undeploys are unchanged.
+
+UPGRADE NOTES:
+
+* Release `deployomat`, `notification_log` and `slack_notifier` from this version together. A new reader beside an old deployomat drops every deploy's started line, since the reader skips `RUNNING` and the old deployomat doesn't put its own.
 
 ## 0.4.1
 

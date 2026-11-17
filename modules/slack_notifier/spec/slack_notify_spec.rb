@@ -2,6 +2,7 @@
 
 require_relative 'spec_helper'
 require_relative '../src/slack_notify'
+require_relative '../../deployomat/src/deploy_event'
 
 RSpec.describe SlackNotify do
   describe '.notification_for_event' do
@@ -184,6 +185,49 @@ RSpec.describe SlackNotify do
     end
   end
 
+  describe '.notification_for_deploy_event' do
+    let(:note) do
+      detail = Deployomat::DeployEvent.detail(
+        kind: 'deploy', phase: 'started', service: 'audience', account: 'workload-prod',
+        execution_arn: 'arn:aws:states:us-east-1:1:execution:deploy:run-1', ami: 'ami-0abc',
+        ami_tags: { 'BuildCommit' => '09c4f525c0ffee' }
+      )
+      JSON.parse(JSON.generate(detail))
+    end
+
+    def text(overrides = {})
+      described_class.notification_for_deploy_event(note.merge(overrides))[:text]
+    end
+
+    it 'reads like the status-event message, with the short commit after the AMI' do
+      expect(text).to start_with('Deploy audience to workload-prod: Started (AMI <')
+      expect(text).to include('|ami-0abc>, commit 09c4f52, Execution <')
+      expect(text).to end_with('|run-1>)')
+    end
+
+    it 'leaves the commit out when the tag is not a sha' do
+      expect(text('ami_tags' => { 'BuildCommit' => 'in-dev' })).not_to include('commit')
+      expect(text('ami_tags' => {})).not_to include('commit')
+    end
+
+    it 'names the requested AMI when no AMI was resolved' do
+      expect(text('ami' => nil, 'ami_requested' => '$LatestMinus:1',
+                  'ami_tags' => {})).to include('(AMI $LatestMinus:1, Execution')
+    end
+
+    it 'adds the errors to a failure or abort' do
+      expect(text('phase' => 'failed',
+                  'errors' => %w[one two])).to include(': Failed (AMI').and end_with("\n\none\ntwo")
+      expect(text('phase' => 'aborted', 'errors' => ['superseded'])).to end_with("\n\nsuperseded")
+    end
+
+    it 'skips a start or completion with SkipNotifications, but never a failure' do
+      expect(text('skip_notifications' => true)).to be_nil
+      expect(text('skip_notifications' => true, 'phase' => 'completed')).to be_nil
+      expect(text('skip_notifications' => true, 'phase' => 'failed')).to include('Failed')
+    end
+  end
+
   describe '.handler' do
     let(:deploy_event) do
       {
@@ -206,9 +250,47 @@ RSpec.describe SlackNotify do
         .to_return(status: 200, body: { ok: true }.to_json)
     end
 
-    it 'handles deploy state machine events' do
-      result = described_class.handler(event: deploy_event, context: {})
+    it 'handles deploy state machine events deployomat did not report' do
+      event = deploy_event.merge('detail' => deploy_event['detail'].merge('status' => 'TIMED_OUT'))
+      result = described_class.handler(event: event, context: {})
       expect(result).to include('Successfully notified')
+    end
+
+    it 'skips deploy status events deployomat reported, without calling Slack' do
+      reported = [
+        deploy_event,
+        deploy_event.merge('detail' => deploy_event['detail'].merge(
+          'status' => 'SUCCEEDED', 'output' => { 'Status' => 'complete', 'Reported' => true }.to_json
+        )),
+        deploy_event.merge('detail' => deploy_event['detail'].merge('status' => 'FAILED',
+                                                                    'error' => 'Deployomat.Reported'))
+      ]
+
+      reported.each do |event|
+        expect(described_class.handler(event: event,
+                                       context: {})).to eq('Skipping notification: deployomat reported it.')
+      end
+      expect(a_request(:post, 'https://slack.com/api/chat.postMessage')).not_to have_been_made
+    end
+
+    it 'still reports a Step Functions failure deployomat did not' do
+      event = deploy_event.merge('detail' => deploy_event['detail'].merge('status' => 'FAILED',
+                                                                          'error' => 'States.Runtime'))
+      expect(described_class.handler(event: event, context: {})).to include('Successfully notified')
+    end
+
+    it "posts deployomat's own deploy event" do
+      detail = Deployomat::DeployEvent.detail(
+        kind: 'deploy', phase: 'completed', service: 'api-service', account: 'production',
+        execution_arn: 'arn:aws:states:us-east-1:123456789012:execution:deploy:test-123', ami: 'ami-0abc'
+      )
+      event = { 'source' => 'omat.deployomat', 'detail-type' => 'Deployomat Deploy',
+                'resources' => [detail['execution_arn']], 'detail' => JSON.parse(JSON.generate(detail)) }
+
+      expect(described_class.handler(event: event, context: {})).to include('Successfully notified')
+      expect(a_request(:post, 'https://slack.com/api/chat.postMessage')
+        .with { |req| JSON.parse(req.body)['text'].start_with?('Deploy api-service to production: Completed') })
+        .to have_been_made
     end
 
     it 'handles unknown state machine gracefully' do

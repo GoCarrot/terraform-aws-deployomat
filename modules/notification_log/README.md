@@ -6,6 +6,8 @@ It follows `slack_notifier`: the same EventBridge rule on Step Functions executi
 
 A cancel that a deploy or undeploy started (a concurrent-deploy cancel, a rollback) is not logged; its parent reports. A deploy that ends `SUCCEEDED` with output status `fail` is logged as `failed`.
 
+Deploys are reported by deployomat itself (see "Deploy events" in the deployomat module README). The rule also matches those events (`deploy_event`, defaulting to the deployomat module's `deploy_event` output), and the Lambda logs their detail as it arrives. A deploy's status events are only a backstop: `RUNNING`, a `SUCCEEDED` run marked `Reported`, and a `FAILED` run with error `Deployomat.Reported` are skipped, and anything else (a timeout, a console stop, a crash, an event that didn't land) is logged from the status event. Release this module with a deployomat that puts deploy events, or deploys lose their started lines.
+
 ## Usage
 
 ```hcl
@@ -16,6 +18,7 @@ module "notification_log" {
   deploy_sfn   = module.deployomat.deploy_sfn
   undeploy_sfn = module.deployomat.undeploy_sfn
   cancel_sfn   = module.deployomat.cancel_sfn
+  deploy_event = module.deployomat.deploy_event
 
   # Accounts trusted to assume the reader role.
   reader_account_ids = [data.aws_caller_identity.admin.id]
@@ -42,7 +45,10 @@ The log group also holds the Lambda's own START/END/REPORT lines, hence the filt
 ```json
 {"schema":"teak.deploy.notification/1","event_id":"...","time":"2026-11-16T22:00:00Z",
  "kind":"deploy","phase":"started","service":"carrot","account":"production",
- "ami":"ami-0abc","execution":"...","execution_arn":"...","errors":[],"skip_notifications":false}
+ "ami":"ami-0abc","execution":"...","execution_arn":"...","errors":[],"skip_notifications":false,
+ "ami_tags":{"BuildCommit":"09c4f525..."}}
 ```
+
+A deploy's notification comes from deployomat's own event and adds `ami_tags` (every tag on the AMI, `{}` if none could be read) and, when the deploy was started with a `$` command, `ami_requested`. `ami` is then the AMI actually launched. Its `event_id` is `<execution>/<phase>`, the same on a retried put.
 
 `kind` is `deploy`, `cancel` or `undeploy`. `phase` is `started`, `completed`, `failed`, `aborted` or `unknown`. `skip_notifications` mirrors `DeployConfig.SkipNotifications`; it is passed through, not acted on.
