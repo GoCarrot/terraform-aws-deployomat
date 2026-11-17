@@ -31,3 +31,11 @@ output "cloudwatch_log_group_arns" {
   description = "The log group arns for all log groups the deployomat may log to."
   value       = concat(values(aws_cloudwatch_log_group.lambda)[*].arn, [aws_cloudwatch_log_group.sfn.arn])
 }
+
+output "deploy_event" {
+  description = "The source and detail-type of the deploy events deployomat puts on the default bus, for subscribing to them."
+  value = {
+    source      = local.deploy_event_source
+    detail_type = local.deploy_event_detail_type
+  }
+}
