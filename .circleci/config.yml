@@ -3,6 +3,7 @@ version: 2.1
 orbs:
   ruby: circleci/ruby@2.1.0
   terraform: circleci/terraform@3.2.0
+  teak: teak/sdk-utils@1
 
 jobs:
   test:
@@ -82,6 +83,15 @@ jobs:
               echo "No examples directory found"
             fi
 
+  promote:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      # Reads `Promote to: vX.Y.Z` from the commit subject; no match, no tag.
+      # Pushes with the project's user key (it is the checkout key), like the SDK repos.
+      - teak/tag-promote
+
 workflows:
   version: 2
   
@@ -91,6 +101,8 @@ workflows:
           filters:
             branches:
               ignore: none  # Run on all branches
+            tags:
+              ignore: /.*/
       
       - validate-examples:
           requires:
@@ -100,3 +112,13 @@ workflows:
               only: 
                 - main
                 - master
+
+      # Tag the commit when its subject is `Promote to: vX.Y.Z`, after tests pass on main.
+      - promote:
+          requires:
+            - test
+          filters:
+            branches:
+              only: main
+            tags:
+              ignore: /.*/
