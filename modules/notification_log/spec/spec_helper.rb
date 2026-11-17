@@ -3,6 +3,10 @@
 require 'rspec'
 require 'json'
 
+ENV['DEPLOY_SFN_ARN'] = 'arn:aws:states:us-east-1:123456789012:stateMachine:deploy'
+ENV['UNDEPLOY_SFN_ARN'] = 'arn:aws:states:us-east-1:123456789012:stateMachine:undeploy'
+ENV['CANCEL_SFN_ARN'] = 'arn:aws:states:us-east-1:123456789012:stateMachine:cancel'
+
 RSpec.configure do |config|
   config.expect_with :rspec do |expectations|
     expectations.include_chain_clauses_in_custom_matcher_descriptions = true
