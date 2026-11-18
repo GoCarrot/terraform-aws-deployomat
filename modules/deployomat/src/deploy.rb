@@ -305,6 +305,73 @@ module Deployomat
     end
   end
 
+  # The one ending no Lambda of ours decides: a step raised or timed out, or returned a status
+  # nothing matched, and the run rolled back through the cancel state machine. Only Step
+  # Functions sees that, so this step runs after Rollback, puts the failed event with the caught
+  # error, and hands back the run's outcome plus `Reported`.
+  #
+  # Takes the run's whole state as `all_input`, because which fields exist depends on how far
+  # the run got. Needs no Config: nothing here touches the deploy's account or state.
+  class ReportDeploy
+    PHASES = { 'complete' => 'completed', 'deploy_aborted' => 'aborted', 'fail' => 'failed' }.freeze
+    MAX_CAUSE_CHARS = 500
+
+    def initialize(all_input:, execution_arn:)
+      @all_input = all_input.is_a?(Hash) ? all_input : {}
+      @execution_arn = execution_arn
+    end
+
+    def call
+      outcome = @all_input['Outcome'].is_a?(Hash) ? @all_input['Outcome'] : {}
+      return outcome.merge('Reported' => false) unless @all_input['ServiceName']
+
+      reported =
+        begin
+          DeployEvent.publish(detail(outcome))
+        rescue StandardError => e
+          $stderr.puts("deploy event: could not report #{@execution_arn}: #{e.class}: #{e.message}")
+          false
+        end
+      outcome.merge('Reported' => reported)
+    end
+
+    private
+
+    def detail(outcome)
+      requested = @all_input['AmiId']
+      DeployEvent.detail(
+        kind: 'deploy', phase: PHASES.fetch(outcome['Status'], 'unknown'),
+        service: @all_input['ServiceName'], account: @all_input['AccountCanonicalSlug'],
+        execution_arn: @execution_arn, ami_requested: requested, errors: errors(outcome),
+        skip_notifications: @all_input.dig('DeployConfig', 'SkipNotifications') == true,
+        **DeployEvent.ami_fields(@all_input.dig('StartDeploy', 'Ami'), requested)
+      )
+    end
+
+    # A run that rolled back after a Catch carries the caught error as { Error, Cause }.
+    def errors(outcome)
+      errors = Array(outcome['Error'])
+      return errors unless errors.empty?
+
+      caught = @all_input['Error']
+      caught.is_a?(Hash) ? [caught['Error'], cause(caught['Cause'])].compact : []
+    end
+
+    # A Lambda error's Cause is a JSON blob with a stack trace, and a failed child run's is its
+    # whole execution description. Keep the message, and keep it short.
+    def cause(raw)
+      return nil if raw.nil?
+
+      parsed = begin
+        JSON.parse(raw.to_s)
+      rescue JSON::ParserError
+        nil
+      end
+      message = parsed.is_a?(Hash) && parsed['errorMessage'] ? parsed['errorMessage'] : raw
+      message.to_s[0, MAX_CAUSE_CHARS]
+    end
+  end
+
   class CheckHealthy
     extend Forwardable
 

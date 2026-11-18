@@ -47,6 +47,27 @@ RSpec.describe Deployomat::DeployEvent do
     end
   end
 
+  describe '.ami_fields' do
+    let(:ec2) { Aws::EC2::Client.new(stub_responses: true) }
+
+    before { allow(described_class).to receive(:ec2_client).and_return(ec2) }
+
+    it 'takes the AMI Start resolved, as Ruby or as JSON hands it back' do
+      expect(described_class.ami_fields({ Id: 'ami-0abc', Tags: { 'A' => 'b' } }, '$LatestMinus:1'))
+        .to eq(ami: 'ami-0abc', ami_tags: { 'A' => 'b' })
+      expect(described_class.ami_fields({ 'Id' => 'ami-0abc', 'Tags' => nil }, '$LatestMinus:1'))
+        .to eq(ami: 'ami-0abc', ami_tags: {})
+      expect(ec2.api_requests).to be_empty
+    end
+
+    it 'falls back to the requested AmiId when it is an AMI id, with its tags' do
+      ec2.stub_responses(:describe_images, images: [{ image_id: 'ami-0req', tags: [{ key: 'A', value: 'b' }] }])
+
+      expect(described_class.ami_fields(nil, 'ami-0req')).to eq(ami: 'ami-0req', ami_tags: { 'A' => 'b' })
+      expect(described_class.ami_fields(nil, '$LatestMinus:1')).to eq(ami: nil, ami_tags: {})
+    end
+  end
+
   describe '.detail' do
     let(:base) do
       { kind: 'deploy', phase: 'started', service: 'audience', account: 'workload-prod', execution_arn: execution_arn }

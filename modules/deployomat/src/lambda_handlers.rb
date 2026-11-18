@@ -39,6 +39,10 @@ module LambdaFunctions
     end
 
     def self.deploy(event:, context:)
+      if event['Step'] == 'Report'
+        return Deployomat::ReportDeploy.new(all_input: event['AllInput'], execution_arn: event['ExecutionArn']).call
+      end
+
       args = {
         account_canonical_slug: event['AccountCanonicalSlug'], service_name: event['ServiceName'],
         deploy_id: "deploy-#{event['DeployId']}"
