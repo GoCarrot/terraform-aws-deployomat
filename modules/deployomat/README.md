@@ -101,6 +101,6 @@ A deploy may be cancelled by starting an execution of `cancel_sfn.arn`. The inpu
 
 ## Deploy events
 
-Deploys put their own events on the default EventBridge bus of deployomat's account. The source and detail-type are in the `deploy_event` output. The detail is a `teak.deploy.notification/1` (see notification_log), plus `ami_tags` (the deployed AMI's tags) and `ami_requested` (the `$` command the deploy started with, if any).
+Deploys put their own events on the default EventBridge bus of deployomat's account. The source and detail-type are in the `deploy_event` output. The detail is a `teak.deploy.notification/1` (see notification_log), plus `ami_tags` (the deployed AMI's tags), `ami_requested` (the `$` command the deploy started with, if any), and the `step` that put the event with its own `status`.
 
-A deploy puts `started` once it knows its AMI, then `completed`, `failed` or `aborted` from the step that ended the run. A run that rolled back after a step raised reports through a `Report` step after the rollback. A run whose finished event landed is marked, with `"Reported": true` in its output or the error `Deployomat.Reported`. Readers of the Step Functions status events skip marked runs and report the rest.
+Each step puts its own events through `DeployEvent::Reporter`, where it decides: `started` once Start knows its AMI, then `completed`, `failed` or `aborted` from the step that ended the run. A run that rolled back after a step raised reports through a `Report` step after the rollback. A run whose finished event landed is marked, with `"Reported": true` in its output or the error `Deployomat.Reported`. Readers of the Step Functions status events skip marked runs and report the rest.
