@@ -401,17 +401,95 @@ RSpec.describe LambdaFunctions::Handler, '.deploy' do
     it 'resolves a $name-prefix to the newest matching AMI' do
       allow(ENV).to receive(:[]).and_call_original
       allow(ENV).to receive(:[]).with('DEPLOYOMAT_AMI_SEARCH_OWNERS').and_return('111111111111')
-      Aws.config[:ec2][:stub_responses][:describe_images] = {
-        images: [
-          { image_id: 'ami-old', name: 'zoo-1', creation_date: '2026-01-01' },
-          { image_id: 'ami-new', name: 'zoo-2', creation_date: '2026-02-01' },
-          { image_id: 'ami-other', name: 'other-3', creation_date: '2026-03-01' }
-        ]
-      }
+      world.images.merge!(
+        'ami-old' => { name: 'zoo-1', creation_date: '2026-01-01' },
+        'ami-new' => { name: 'zoo-2', creation_date: '2026-02-01', tags: { 'BuildCommit' => 'abc1234' } },
+        'ami-other' => { name: 'other-3', creation_date: '2026-03-01' }
+      )
 
       start(ami_id: '$name-prefix:zoo-')
 
       expect(world.calls(:create_launch_template_version).first[:launch_template_data]).to eq(image_id: 'ami-new')
+      expect(world.deploy_events.first).to include(
+        'phase' => 'started', 'ami' => 'ami-new', 'ami_requested' => '$name-prefix:zoo-',
+        'ami_tags' => { 'BuildCommit' => 'abc1234' }
+      )
+    end
+  end
+
+  describe 'the started event' do
+    before { world.with_template }
+
+    it 'is put once the AMI is known, with its tags, and the AMI rides on the result' do
+      world.images[ami] =
+        { name: 'zoo', creation_date: '2026-01-01', tags: { 'BuildCommit' => '09c4f525', 'Os' => 'd13' } }
+
+      result = step('Start', 'AmiId' => ami, 'AllInput' => { 'DeployConfig' => deploy_config },
+                             'ExecutionArn' => 'arn:aws:states:us-east-1:1:execution:deploy:exec-1')
+
+      expected = {
+        'schema' => 'teak.deploy.notification/1', 'event_id' => 'exec-1/started', 'kind' => 'deploy',
+        'phase' => 'started', 'service' => service, 'account' => slug, 'ami' => ami, 'execution' => 'exec-1',
+        'ami_tags' => { 'BuildCommit' => '09c4f525', 'Os' => 'd13' }, 'skip_notifications' => false
+      }
+      expect(world.deploy_events).to contain_exactly(include(expected))
+      expect(world.deploy_events.first).not_to include('ami_requested')
+      expect(world.calls(:describe_images)).to eq([{ image_ids: [ami] }])
+      expect(result[:Ami]).to eq(Id: ami, Tags: { 'BuildCommit' => '09c4f525', 'Os' => 'd13' })
+    end
+
+    it 'names the AMI a $launchtemplate version launches' do
+      start(ami_id: '$launchtemplate:3')
+
+      expect(world.deploy_events.first).to include(
+        'ami' => DeployWorld::INITIAL_LT_IMAGE, 'ami_requested' => '$launchtemplate:3', 'ami_tags' => {}
+      )
+    end
+
+    it 'carries SkipNotifications' do
+      start(config: deploy_config.merge('SkipNotifications' => true))
+
+      expect(world.deploy_events.first).to include('skip_notifications' => true)
+    end
+
+    it 'is put alongside the target group and ASG clones, not ahead of them' do
+      cloned = Queue.new
+      world.before_call(:create_auto_scaling_group) { cloned << true }
+      put_waited = nil
+      world.before_call(:put_events) { put_waited = cloned.pop(timeout: 2) }
+
+      expect(start[:Status]).to eq(:success)
+      expect(put_waited).to be(true)
+      expect(world.deploy_events.size).to eq(1)
+    end
+
+    it 'is put before a Start that raises gives up' do
+      world.before_call(:put_events) { sleep 0.2 }
+      world.before_call(:create_auto_scaling_group) { raise 'boom' }
+
+      expect { start }.to raise_error(RuntimeError, 'boom')
+      expect(world.deploy_events.size).to eq(1)
+    end
+
+    it 'does not hold up the deploy when the put fails' do
+      world.fail_with(:put_events, 'AccessDeniedException')
+
+      expect { expect(start[:Status]).to eq(:success) }.to output(/put_events failed/).to_stderr
+    end
+
+    it 'is not put by a Start that finds another deploy running' do
+      world.item.merge!('deploy_id' => 'deploy-other', 'deploy_asg_name' => 'thezoo-other')
+
+      expect(start[:Status]).to eq(:deploy_active)
+      expect(world.deploy_events).to be_empty
+    end
+
+    it 'leaves the AMI on a failed Start so Report can name it' do
+      world.fail_with(:create_auto_scaling_group, 'ValidationError')
+
+      result = start
+
+      expect(result).to include(Status: :fail, Ami: { Id: ami, Tags: {} })
     end
   end
 

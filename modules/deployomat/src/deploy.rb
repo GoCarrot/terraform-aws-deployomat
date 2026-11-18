@@ -15,6 +15,7 @@
 # limitations under the License.
 
 require_relative 'lib'
+require_relative 'deploy_event'
 
 module Deployomat
   ACTIVE_DEPLOY_MSG = "Asserting active deploy"
@@ -38,10 +39,12 @@ module Deployomat
     GREATER_THAN_ZERO = %i[traffic_shift_per_step].freeze
     NOT_NEGATIVE = %i[bake_time wait_per_step health_timeout].freeze
 
-    def initialize(config, ami_id:, deploy_config:)
+    def initialize(config, ami_id:, deploy_config:, execution_arn: nil)
       deploy_config = deploy_config || {}
       @config = config
       @ami_id = ami_id
+      @execution_arn = execution_arn
+      @skip_notifications = deploy_config['SkipNotifications'] == true
       @new_asg_name = "#{service_name}-#{Time.now.utc.strftime("%Y%m%dT%H%M%SZ")}"
       @new_tg_name = "#{service_name[0...15]}-#{Time.now.utc.strftime("%Y%m%dT%H%M%SZ")}"
 
@@ -56,7 +59,19 @@ module Deployomat
       @errors = []
     end
 
+    # The started report runs on its own thread, alongside the target group and ASG clones,
+    # and is joined before the Lambda returns or raises so the put isn't frozen halfway.
     def call
+      response = start
+      ami = @started&.value
+      ami ? response.merge(Ami: ami, SkipNotifications: @skip_notifications) : response
+    ensure
+      @started&.join
+    end
+
+  private
+
+    def start
       if ami_id.nil? || ami_id.empty?
         error "No AMI specified"
       end
@@ -132,6 +147,8 @@ module Deployomat
           puts "Reusing launch template version #{launch_template.version_number}"
           launch_template
         end
+
+      report_started(lt.launch_template_data&.image_id)
 
       elbv2 = ElbV2.new(@config)
       # TODO: Support multiple target groups per asg.
@@ -213,8 +230,6 @@ module Deployomat
       end
     end
 
-  private
-
     # This run ends here with no Rollback, so nothing else will clean up after it. Clearing
     # the row comes last: if the cleanup raises the row is still set, which is what lets
     # the state machine's Catch -> Rollback find what was left behind.
@@ -270,6 +285,23 @@ module Deployomat
 
     def error_response(status = :fail)
       { Status: status, Error: @errors }
+    end
+
+    # The AMI this deploy launches, whatever AmiId named it, with its tags. Report reads it
+    # back from this step's result for the finished event, so the tags are looked up once.
+    def report_started(resolved_ami_id)
+      @started = Thread.new do
+        tags = DeployEvent.ami_tags(resolved_ami_id)
+        DeployEvent.publish(DeployEvent.detail(
+          kind: 'deploy', phase: 'started', service: service_name, account: @config.account_canonical_slug,
+          execution_arn: @execution_arn, ami: resolved_ami_id, ami_requested: ami_id, ami_tags: tags,
+          skip_notifications: @skip_notifications
+        ))
+        { Id: resolved_ami_id, Tags: tags }
+      rescue StandardError => e
+        $stderr.puts("deploy event: started report failed: #{e.class}: #{e.message}")
+        { Id: resolved_ami_id, Tags: {} }
+      end
     end
   end
 

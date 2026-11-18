@@ -47,7 +47,10 @@ module LambdaFunctions
       op =
         case event['Step']
         when 'Start'
-          Deployomat::StartDeploy.new(config, ami_id: event['AmiId'], deploy_config: event.dig('AllInput', 'DeployConfig'))
+          Deployomat::StartDeploy.new(
+            config, ami_id: event['AmiId'], deploy_config: event.dig('AllInput', 'DeployConfig'),
+            execution_arn: event['ExecutionArn']
+          )
         when 'CheckHealthy'
           Deployomat::CheckHealthy.new(
             config, max_wait: event['WaitTime'], min_healthy: event['MinHealthy'],

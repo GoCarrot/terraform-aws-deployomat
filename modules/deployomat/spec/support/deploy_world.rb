@@ -67,13 +67,17 @@ class DeployWorld
     ['SET #DEPLOY_ASG = :empty', '#DEPLOY_ID = :deploy_id'] => OURS
   }.freeze
 
-  attr_reader :requests, :item, :rules, :target_groups, :asgs, :healthy, :failures
+  attr_reader :requests, :item, :rules, :target_groups, :asgs, :healthy, :failures, :images
+
+  # The AMI each launch template version launches, before any deploy makes one.
+  INITIAL_LT_IMAGE = 'ami-0initial'
 
   def initialize(slug:, service:)
     @primary_key = "#{slug}.#{service}"
     @service = service
     @requests = []
     @failures = {}
+    @before_calls = {}
     @item = { 'id' => @primary_key }
     @asgs = {}
     @rules = []
@@ -81,6 +85,9 @@ class DeployWorld
     @tags = {}
     @healthy = Hash.new(0)
     @launch_template_version = 7
+    @lt_images = Hash.new(INITIAL_LT_IMAGE)
+    # AMI id => { name:, creation_date:, tags: }, for describe_images.
+    @images = {}
     @counter = 0
   end
 
@@ -89,9 +96,21 @@ class DeployWorld
     requests.select { |(name, _)| name == operation }.map(&:last)
   end
 
+  # The detail of every deploy event put, parsed, in order.
+  def deploy_events
+    calls(:put_events).flat_map { |params| params[:entries] }
+                      .select { |entry| entry[:source] == 'omat.deployomat' }
+                      .map { |entry| JSON.parse(entry[:detail]) }
+  end
+
   # Make every call to an operation fail with an AWS error code, e.g. 'ValidationError'.
   def fail_with(operation, code)
     failures[operation] = code
+  end
+
+  # Run a block at the start of every call to an operation, before its stub answers.
+  def before_call(operation, &block)
+    @before_calls[operation] = block
   end
 
   def rule(arn)
@@ -167,6 +186,7 @@ class DeployWorld
   def with_failures(responses)
     responses.to_h do |operation, stub|
       [operation, lambda do |ctx|
+        @before_calls[operation]&.call(ctx)
         next stub.call(ctx) unless failures.key?(operation)
 
         record(ctx)
@@ -363,14 +383,24 @@ class DeployWorld
       create_launch_template_version: lambda do |ctx|
         record(ctx)
         @launch_template_version += 1
-        { launch_template_version: { launch_template_id: ctx.params[:launch_template_id],
-                                     version_number: @launch_template_version } }
+        @lt_images[@launch_template_version] = ctx.params.dig(:launch_template_data, :image_id)
+        { launch_template_version: lt_version(ctx.params[:launch_template_id], @launch_template_version) }
       end,
       describe_launch_template_versions: lambda do |ctx|
         record(ctx)
         versions = ctx.params[:versions].map { |v| v == '$Latest' ? @launch_template_version : v.to_i }
-        { launch_template_versions: versions.map do |number|
-          { launch_template_id: ctx.params[:launch_template_id], version_number: number }
+        { launch_template_versions: versions.map { |number| lt_version(ctx.params[:launch_template_id], number) } }
+      end,
+      # By id (the deploy event's tag lookup) or by owner (a $name-prefix search).
+      describe_images: lambda do |ctx|
+        record(ctx)
+        ids = ctx.params[:image_ids] || images.keys
+        { images: ids.filter_map do |id|
+          image = images[id]
+          next unless image
+
+          { image_id: id, name: image[:name], creation_date: image[:creation_date],
+            tags: image.fetch(:tags, {}).map { |key, value| { key: key, value: value } } }
         end }
       end,
       modify_launch_template: lambda do |ctx|
@@ -381,8 +411,17 @@ class DeployWorld
     }
   end
 
+  def lt_version(launch_template_id, number)
+    { launch_template_id: launch_template_id, version_number: number,
+      launch_template_data: { image_id: @lt_images[number] } }
+  end
+
   def eventbridge_stubs
     {
+      put_events: lambda do |ctx|
+        record(ctx)
+        { failed_entry_count: 0, entries: ctx.params[:entries].map { { event_id: 'e-1' } } }
+      end,
       describe_rule: lambda do |ctx|
         record(ctx)
         'ResourceNotFoundException'

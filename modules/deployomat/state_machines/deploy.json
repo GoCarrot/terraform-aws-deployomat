@@ -11,7 +11,8 @@
         "AmiId.$": "$.AmiId",
         "DeployId.$": "$$.Execution.Name",
         "AllInput.$": "$",
-        "Step": "Start"
+        "Step": "Start",
+        "ExecutionArn.$": "$$.Execution.Id"
       },
       "ResultPath": "$.StartDeploy",
       "Resource": "${deploy_lambda_arn}",
