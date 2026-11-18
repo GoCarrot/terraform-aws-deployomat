@@ -80,7 +80,8 @@ RSpec.describe Deployomat::DeployEvent do
         'schema' => 'teak.deploy.notification/1', 'event_id' => 'run-123/started', 'kind' => 'deploy',
         'phase' => 'started', 'service' => 'audience', 'account' => 'workload-prod', 'ami' => 'ami-0abc',
         'execution' => 'run-123', 'execution_arn' => execution_arn, 'errors' => [],
-        'skip_notifications' => false, 'ami_tags' => { 'BuildCommit' => '09c4f525' }, 'step' => nil, 'status' => nil
+        'skip_notifications' => false, 'ami_tags' => { 'BuildCommit' => '09c4f525' }, 'step' => nil, 'status' => nil,
+        'progress' => nil
       )
       expect(Time.iso8601(detail['time'])).to be_within(5).of(Time.now)
       expect(detail).not_to include('ami_requested')
@@ -90,6 +91,12 @@ RSpec.describe Deployomat::DeployEvent do
       detail = described_class.detail(**base, ami: 'ami-0abc', ami_requested: '$LatestMinus:1')
 
       expect(detail).to include('ami' => 'ami-0abc', 'ami_requested' => '$LatestMinus:1')
+    end
+
+    it 'keeps one event_id per progress, since a rollout puts several' do
+      detail = described_class.detail(**base, phase: 'progress', progress: 40)
+
+      expect(detail).to include('event_id' => 'run-123/progress/40', 'progress' => 40)
     end
 
     it 'stringifies errors and defaults the optional fields' do

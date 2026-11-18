@@ -111,6 +111,18 @@ RSpec.describe LambdaFunctions::Handler, '.deploy step events' do
       )
     end
 
+    it 'puts a progress event after each Rollout shift, without ending the run' do
+      rollout = from_start.merge('StepSize' => 60, 'StepDelay' => 1, 'RuleIds' => started[:RuleIds],
+                                 'TargetGroupArn' => new_tg_arn, 'OldTargetGroupArn' => DeployWorld::PRODUCTION_TG)
+
+      expect(step('Rollout', rollout)).to eq(Status: :wait, Wait: 1, Progress: 60, Reported: false)
+      expect(step('Rollout', rollout.merge('StepResult' => { 'Progress' => 60 })))
+        .to eq(Status: :complete, Reported: false)
+      expect(finished_events.map { |e| e.values_at('event_id', 'step', 'status', 'progress', 'ami') }).to eq(
+        [['exec-1/progress/60', 'Rollout', 'wait', 60, ami], ['exec-1/progress/100', 'Rollout', 'complete', 100, ami]]
+      )
+    end
+
     it 'leaves a result no step reported unmarked, so the status-event readers report it' do
       started
 

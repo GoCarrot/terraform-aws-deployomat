@@ -451,11 +451,9 @@ module Deployomat
         elbv2.shift_traffic(rule, step_size, old_target_group_arn, target_group_arn)
         puts "Shifted traffic on #{rule.rule_arn} to #{[total, 100].min}%"
       end
-      if total >= 100
-        { Status: :complete }
-      else
-        { Status: :wait, Wait: step_delay, Progress: total }
-      end
+      result = total >= 100 ? { Status: :complete } : { Status: :wait, Wait: step_delay, Progress: total }
+      @reporter.emit('progress', status: result[:Status], progress: [total, 100].min)
+      result
     end
   end
 

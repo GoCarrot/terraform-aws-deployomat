@@ -22,12 +22,13 @@ require 'time'
 module Deployomat
   # Deployomat's own deploy event, put on the default EventBridge bus of the account it runs
   # in. The detail is a Teak deploy notification (`teak.deploy.notification/1`, the shape
-  # notification_log writes), with `ami` as the AMI actually deployed and four more fields:
+  # notification_log writes), with `ami` as the AMI actually deployed and five more fields:
   #   ami_requested  the AmiId the deploy was started with, when it was a `$` command
   #   ami_tags       every tag on the AMI, {} when there are none or they can't be read
   #   step           the step that put the event (Start, CheckHealthy, Finish, Report...)
   #   status         that step's own Status (undeploying, deploy_active, fail...)
-  # `step` and `status` are always present, and null when unset, so every event has the same keys.
+  #   progress       the percent of traffic on the new ASG, on Rollout's `progress` events
+  # `step`, `status` and `progress` are always present, and null when unset, so every event has the same keys.
   #
   # Reporting never fails a deploy: a lookup or put that goes wrong is one line on stderr.
   # `publish` says whether the event landed, so the caller can leave the run unreported and
@@ -81,14 +82,14 @@ module Deployomat
       { ami: id.to_s.start_with?('ami-') ? id : nil, ami_tags: tags || {} }
     end
 
-    # event_id is derived from the execution and phase, so a retried put is one line to a
-    # reader that dedupes on it.
+    # event_id is derived from the execution and phase, and the progress when there is one (a rollout
+    # puts several), so a retried put is one line to a reader that dedupes on it.
     def self.detail(kind:, phase:, service:, account:, execution_arn:, ami: nil, ami_requested: nil, ami_tags: {},
-                    errors: [], skip_notifications: false, step: nil, status: nil)
+                    errors: [], skip_notifications: false, step: nil, status: nil, progress: nil)
       execution = execution_arn.to_s.split(':').last
       detail = {
         'schema' => SCHEMA,
-        'event_id' => "#{execution}/#{phase}",
+        'event_id' => [execution, phase, progress].compact.join('/'),
         'time' => Time.now.utc.iso8601,
         'kind' => kind,
         'phase' => phase,
@@ -101,7 +102,8 @@ module Deployomat
         'skip_notifications' => skip_notifications == true,
         'ami_tags' => ami_tags || {},
         'step' => step,
-        'status' => status&.to_s
+        'status' => status&.to_s,
+        'progress' => progress
       }
       detail['ami_requested'] = ami_requested if ami_requested && ami_requested != ami
       detail
@@ -131,7 +133,7 @@ module Deployomat
     # step's Lambda event and hands it to the step, which calls it where it decides:
     #
     #   return @reporter.failed(Status: :fail, Error: [...])   # puts `failed`, returns the result + Reported
-    #   @reporter.emit('healthy')                              # any other event, true when it landed
+    #   @reporter.emit('progress', status: :wait, progress: 40) # any other event, true when it landed
     #
     # It needs the deploy run's ExecutionArn. A run started on an older definition doesn't pass one,
     # so it puts nothing and every result comes back Reported false.
@@ -161,13 +163,13 @@ module Deployomat
       end
 
       # Puts one deploy event with any phase. True only when it landed; it never raises.
-      def emit(phase, status: nil, errors: [], ami: @ami)
+      def emit(phase, status: nil, errors: [], ami: @ami, progress: nil)
         return false unless @execution_arn && @service
 
         DeployEvent.publish(DeployEvent.detail(
           kind: 'deploy', phase: phase, service: @service, account: @account, execution_arn: @execution_arn,
           ami_requested: @ami_requested, errors: errors, skip_notifications: @skip_notifications,
-          step: @step, status: status, **DeployEvent.ami_fields(ami, @ami_requested)
+          step: @step, status: status, progress: progress, **DeployEvent.ami_fields(ami, @ami_requested)
         ))
       rescue StandardError => e
         DeployEvent.warn_false("could not put #{phase} for #{@execution_arn}: #{e.class}: #{e.message}")
