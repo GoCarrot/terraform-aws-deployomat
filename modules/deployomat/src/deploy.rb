@@ -106,7 +106,7 @@ module Deployomat
 
       if !@errors.empty?
         puts "Failing due to invalid configuration."
-        return failed(error_response)
+        return error_response
       end
 
       production_asg = @config.production_asg&.yield_self { |name| asg.get(name) }
@@ -124,10 +124,10 @@ module Deployomat
           return @on_concurrent_deploy.to_s == 'fail' ? failed(response, errors: [CONCURRENT]) : response
         elsif @config.undeploying?
           error "Undeploy of #{service_name} in #{account_name} in progress."
-          return failed(error_response(:undeploying))
+          return error_response(:undeploying)
         else
           error "Failed to assert active deploy for unknown reason."
-          return failed(error_response)
+          return error_response
         end
       end
 
@@ -173,7 +173,7 @@ module Deployomat
         puts message
         error message
         abandon_start(asg, elbv2, new_target_group_arn)
-        return failed(error_response)
+        return error_response
       end
 
 
@@ -184,7 +184,7 @@ module Deployomat
           @config.assert_active
         rescue Aws::DynamoDB::Errors::ConditionalCheckFailedException
           error NOT_ACTIVE_MSG
-          return failed(error_response)
+          return error_response
         end
         puts ACTIVE_ASSERT_MSG
         puts "Preventing scale-in of #{production_asg.auto_scaling_group_name}"
@@ -287,8 +287,9 @@ module Deployomat
       @errors << msg
     end
 
+    # Ends Start with the errors so far, and puts the `failed` event for them.
     def error_response(status = :fail)
-      { Status: status, Error: @errors }
+      failed({ Status: status, Error: @errors })
     end
 
     # The AMI this deploy launches, whatever AmiId named it, with its tags. The later steps get it
