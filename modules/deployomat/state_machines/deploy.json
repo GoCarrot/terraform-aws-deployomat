@@ -1,5 +1,5 @@
 {
-  "Comment": "Deploy a service to an account. Required inputs are AccountCanonicalSlug, ServiceName, and AmiId. Optional inputs are DeployConfig.HealthTimeout, DeployConfig.WaitPerStep, DeployConfig.TrafficShiftPerStep, DeployConfig.BakeTime, and DeployConfig.OnConcurrentDeploy",
+  "Comment": "Deploy a service to an account. Required inputs are AccountCanonicalSlug, ServiceName, and AmiId. Optional inputs are DeployConfig.HealthTimeout, DeployConfig.WaitPerStep, DeployConfig.TrafficShiftPerStep, DeployConfig.BakeTime, and DeployConfig.OnConcurrentDeploy, DeployConfig.SkipNotifications. Each step whose result ends the run puts deployomat's finished deploy event and returns Reported; the rollback after a Catch reports through Report.",
   "StartAt": "StartDeploy",
   "States": {
     "StartDeploy": {
@@ -43,7 +43,7 @@
         {
           "Variable": "$.StartDeploy.Status",
           "StringEquals": "undeploying",
-          "Next": "Fail"
+          "Next": "UndeployInProgress"
         },
         {
           "Variable": "$.StartDeploy.Status",
@@ -60,24 +60,39 @@
     },
     "KnownStartError": {
       "Type": "Pass",
-      "End": true,
       "Parameters": {
         "Status": "fail",
-        "Error.$": "$.StartDeploy.Error"
-      }
+        "Error.$": "$.StartDeploy.Error",
+        "Reported.$": "$.StartDeploy.Reported"
+      },
+      "ResultPath": "$.Outcome",
+      "Next": "ReportBranch"
     },
     "FailConcurrentDeploy": {
       "Type": "Pass",
-      "End": true,
       "Parameters": {
         "Status": "fail",
         "Error": [
           "A different deploy is running concurrently, and this deploy was configured to fail in such a case."
-        ]
-      }
+        ],
+        "Reported.$": "$.StartDeploy.Reported"
+      },
+      "ResultPath": "$.Outcome",
+      "Next": "ReportBranch"
     },
     "Fail": {
       "Type": "Fail"
+    },
+    "UndeployInProgress": {
+      "Type": "Pass",
+      "Parameters": {
+        "Status": "fail",
+        "Failed": true,
+        "Error.$": "$.StartDeploy.Error",
+        "Reported.$": "$.StartDeploy.Reported"
+      },
+      "ResultPath": "$.Outcome",
+      "Next": "ReportBranch"
     },
     "RolledBack": {
       "Comment": "The rollback's own failure, if any, is in the cancel run. Report reads a caught error from $.Error when there is one; it isn't named here because a Choice default reaches Rollback without one.",
@@ -180,7 +195,10 @@
           "TargetGroupArn.$": "$.StartDeploy.NewTargetGroupArn",
           "MinHealthy.$": "$.StartDeploy.MinHealthy",
           "Step": "CheckHealthy",
-          "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id"
+          "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id",
+          "ExecutionArn.$": "$$.Execution.Id",
+          "Ami.$": "$.StartDeploy.Ami",
+          "SkipNotifications.$": "$.StartDeploy.SkipNotifications"
         }
       },
       "Retry": [
@@ -216,7 +234,7 @@
         {
           "Variable": "$.CheckHealthy.Output.Status",
           "StringEquals": "deploy_aborted",
-          "Next": "CancelledDeploy"
+          "Next": "CancelledAtCheckHealthy"
         },
         {
           "Variable": "$.CheckHealthy.Output.Status",
@@ -226,13 +244,26 @@
       ],
       "Default": "Rollback"
     },
+    "CancelledAtCheckHealthy": {
+      "Comment": "Calling a deploy that got cancelled due to a concurrent deploy 'successful' to avoid spurious failure notifications.",
+      "Type": "Pass",
+      "Parameters": {
+        "Status": "deploy_aborted",
+        "Error": "Deploy was cancelled due to a superseding deploy.",
+        "Reported.$": "$.CheckHealthy.Output.Reported"
+      },
+      "ResultPath": "$.Outcome",
+      "Next": "ReportBranch"
+    },
     "KnownHealthError": {
       "Type": "Pass",
-      "End": true,
       "Parameters": {
         "Status": "fail",
-        "Error.$": "$.CheckHealthy.Output.Error"
-      }
+        "Error.$": "$.CheckHealthy.Output.Error",
+        "Reported.$": "$.CheckHealthy.Output.Reported"
+      },
+      "ResultPath": "$.Outcome",
+      "Next": "ReportBranch"
     },
     "Rollout": {
       "Type": "Task",
@@ -250,7 +281,10 @@
           "TargetGroupArn.$": "$.StartDeploy.NewTargetGroupArn",
           "OldTargetGroupArn.$": "$.StartDeploy.OldTargetGroupArn",
           "Step": "Rollout",
-          "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id"
+          "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id",
+          "ExecutionArn.$": "$$.Execution.Id",
+          "Ami.$": "$.StartDeploy.Ami",
+          "SkipNotifications.$": "$.StartDeploy.SkipNotifications"
         }
       },
       "Retry": [
@@ -286,10 +320,21 @@
         {
           "Variable": "$.RolloutStatus.Output.Status",
           "StringEquals": "deploy_aborted",
-          "Next": "CancelledDeploy"
+          "Next": "CancelledAtRollout"
         }
       ],
       "Default": "Rollback"
+    },
+    "CancelledAtRollout": {
+      "Comment": "Calling a deploy that got cancelled due to a concurrent deploy 'successful' to avoid spurious failure notifications.",
+      "Type": "Pass",
+      "Parameters": {
+        "Status": "deploy_aborted",
+        "Error": "Deploy was cancelled due to a superseding deploy.",
+        "Reported.$": "$.RolloutStatus.Output.Reported"
+      },
+      "ResultPath": "$.Outcome",
+      "Next": "ReportBranch"
     },
     "Coalesce": {
       "Type": "Task",
@@ -300,7 +345,10 @@
         "DeployId.$": "$$.Execution.Name",
         "TargetGroupArn.$": "$.StartDeploy.NewTargetGroupArn",
         "RuleIds.$": "$.StartDeploy.RuleIds",
-        "Step": "Coalesce"
+        "Step": "Coalesce",
+        "ExecutionArn.$": "$$.Execution.Id",
+        "Ami.$": "$.StartDeploy.Ami",
+        "SkipNotifications.$": "$.StartDeploy.SkipNotifications"
       },
       "ResultPath": "$.Coalesce",
       "Resource": "${deploy_lambda_arn}",
@@ -326,10 +374,21 @@
         {
           "Variable": "$.Coalesce.Status",
           "StringEquals": "deploy_aborted",
-          "Next": "CancelledDeploy"
+          "Next": "CancelledAtCoalesce"
         }
       ],
       "Default": "Rollback"
+    },
+    "CancelledAtCoalesce": {
+      "Comment": "Calling a deploy that got cancelled due to a concurrent deploy 'successful' to avoid spurious failure notifications.",
+      "Type": "Pass",
+      "Parameters": {
+        "Status": "deploy_aborted",
+        "Error": "Deploy was cancelled due to a superseding deploy.",
+        "Reported.$": "$.Coalesce.Reported"
+      },
+      "ResultPath": "$.Outcome",
+      "Next": "ReportBranch"
     },
     "BakeDeploy": {
       "Type": "Task",
@@ -345,7 +404,10 @@
           "RuleIds.$": "$.StartDeploy.RuleIds",
           "BakeTime.$": "$.StartDeploy.WaitForBakeTime",
           "Step": "Bake",
-          "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id"
+          "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id",
+          "ExecutionArn.$": "$$.Execution.Id",
+          "Ami.$": "$.StartDeploy.Ami",
+          "SkipNotifications.$": "$.StartDeploy.SkipNotifications"
         }
       },
       "Retry": [
@@ -381,10 +443,21 @@
         {
           "Variable": "$.BakeStatus.Output.Status",
           "StringEquals": "deploy_aborted",
-          "Next": "CancelledDeploy"
+          "Next": "CancelledAtBake"
         }
       ],
       "Default": "Rollback"
+    },
+    "CancelledAtBake": {
+      "Comment": "Calling a deploy that got cancelled due to a concurrent deploy 'successful' to avoid spurious failure notifications.",
+      "Type": "Pass",
+      "Parameters": {
+        "Status": "deploy_aborted",
+        "Error": "Deploy was cancelled due to a superseding deploy.",
+        "Reported.$": "$.BakeStatus.Output.Reported"
+      },
+      "ResultPath": "$.Outcome",
+      "Next": "ReportBranch"
     },
     "FinishDeploy": {
       "Type": "Task",
@@ -394,19 +467,15 @@
         "DeployId.$": "$$.Execution.Name",
         "AllowUndeploy.$": "$.StartDeploy.AllowUndeploy",
         "AutomaticUndeployMinutes.$": "$.StartDeploy.AutomaticUndeployMinutes",
-        "Step": "Finish"
+        "Step": "Finish",
+        "ExecutionArn.$": "$$.Execution.Id",
+        "Ami.$": "$.StartDeploy.Ami",
+        "SkipNotifications.$": "$.StartDeploy.SkipNotifications",
+        "AmiId.$": "$.AmiId"
       },
       "Resource": "${deploy_lambda_arn}",
-      "End": true
-    },
-    "CancelledDeploy": {
-      "Comment": "Calling a deploy that got cancelled due to a concurrent deploy 'successful' to avoid spurious failure notifications.",
-      "Type": "Pass",
-      "End": true,
-      "Parameters": {
-        "Status": "deploy_aborted",
-        "Error": "Deploy was cancelled due to a superseding deploy."
-      }
+      "ResultPath": "$.Outcome",
+      "Next": "ReportBranch"
     },
     "Report": {
       "Comment": "Only after Rollback: the run rolled back after a Catch or an unmatched status, and no Lambda of ours decided that. Puts the failed event with the caught error. Takes the whole state, because which fields exist depends on how far the run got. An old Lambda that doesn't know this step returns no Reported, which ends the run unreported.",
@@ -441,7 +510,7 @@
       "ResultPath": "$.Outcome"
     },
     "ReportBranch": {
-      "Comment": "Report comes here with its Reported in $.Outcome. Rules run in order, so the BooleanEquals only sees a Reported that exists; a missing path would be States.Runtime.",
+      "Comment": "Every ending comes here with its step's Reported in $.Outcome. Rules run in order, so the BooleanEquals only sees a Reported that exists; a missing path would be States.Runtime.",
       "Type": "Choice",
       "Choices": [
         {

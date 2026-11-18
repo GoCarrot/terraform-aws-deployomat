@@ -98,3 +98,9 @@ module "slack_notify" {
 Once deployomat is set up, a deploy can be triggered by starting an execution of `deploy_sfn.arn`. The minimal input is a JSON document containing AccountName, ServiceName, and AmiId keys. For example, using the aws cli, `aws stepfunctions start-execution --state-machine-arn <DEPLOY_SFN_ARN> --input '{"AccountName":"workload-dev-0001", "ServiceName":"example", "AmiId": "ami-xxxx"}'`
 
 A deploy may be cancelled by starting an execution of `cancel_sfn.arn`. The input is a JSON document containning AccountName and ServiceName keys. For example, using the aws cli, `aws stepfunctions start-execution --state-machine-arn <CANCEL_SFN_ARN> --input '{"AccountName":"workload-dev-0001", "ServiceName": "example"}'`
+
+## Deploy events
+
+Deploys put their own events on the default EventBridge bus of deployomat's account. The source and detail-type are in the `deploy_event` output. The detail is a `teak.deploy.notification/1` (see notification_log), plus `ami_tags` (the deployed AMI's tags) and `ami_requested` (the `$` command the deploy started with, if any).
+
+A deploy puts `started` once it knows its AMI, then `completed`, `failed` or `aborted` from the step that ended the run. A run that rolled back after a step raised reports through a `Report` step after the rollback. A run whose finished event landed is marked, with `"Reported": true` in its output or the error `Deployomat.Reported`. Readers of the Step Functions status events skip marked runs and report the rest.

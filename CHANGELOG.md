@@ -3,6 +3,7 @@
 ENHANCEMENTS:
 
 * `deployomat` can put its own deploy events on the default EventBridge bus (source `omat.deployomat`, detail-type `Deployomat Deploy`, new `deploy_event` output). The detail is a `teak.deploy.notification/1` with the deployed AMI and all its tags (`ami_tags`). The Lambda role gains `ec2:DescribeImages`, because only the AMI's owner sees its tags, and `events:PutEvents` on the default bus for that source only.
+* A deploy puts a `started` event once it has resolved its AMI, and a finished event (`completed`, `failed`, `aborted`) from the step that ended the run, or from a new `Report` step after a rollback. A run whose finished event landed ends with `"Reported": true` in its output, or, if it failed, with the error `Deployomat.Reported` instead of an unnamed failure. Nothing waits on the execution today, so no caller sees a difference. A started event that doesn't land has no backstop. See "Deploy events" in the module README.
 
 ## 0.4.1
 
