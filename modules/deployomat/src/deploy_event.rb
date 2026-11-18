@@ -26,7 +26,8 @@ module Deployomat
   #   ami_requested  the AmiId the deploy was started with, when it was a `$` command
   #   ami_tags       every tag on the AMI, {} when there are none or they can't be read
   #   step           the step that put the event (Start, CheckHealthy, Finish, Report...)
-  #   status         that step's own Status (undeploying, deploy_active, fail...), when it has one
+  #   status         that step's own Status (undeploying, deploy_active, fail...)
+  # `step` and `status` are always present, and null when unset, so every event has the same keys.
   #
   # Reporting never fails a deploy: a lookup or put that goes wrong is one line on stderr.
   # `publish` says whether the event landed, so the caller can leave the run unreported and
