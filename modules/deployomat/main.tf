@@ -47,6 +47,10 @@ locals {
   tags     = { for key, value in local.our_tags : key => value if lookup(data.aws_default_tags.tags.tags, key, null) != value }
 
   ami_owner_account_ids = join(",", coalesce(var.ami_owner_account_ids, [data.aws_caller_identity.current.id]))
+
+  # Must match Deployomat::DeployEvent in src/deploy_event.rb.
+  deploy_event_source      = "omat.deployomat"
+  deploy_event_detail_type = "Deployomat Deploy"
 }
 
 resource "aws_dynamodb_table" "state" {
@@ -144,6 +148,30 @@ data "aws_iam_policy_document" "deployomat-lambda" {
       aws_dynamodb_table.state.arn,
       "${aws_dynamodb_table.state.arn}/*"
     ]
+  }
+
+  # Deploy events carry the deployed AMI's tags. Only the AMI's owner sees them, so this is
+  # the Lambda's own role, not the workload deploy role. DescribeImages can't be scoped.
+  statement {
+    actions = [
+      "ec2:DescribeImages"
+    ]
+
+    resources = ["*"]
+  }
+
+  statement {
+    actions = [
+      "events:PutEvents"
+    ]
+
+    resources = ["arn:${data.aws_partition.current.partition}:events:*:${data.aws_caller_identity.current.account_id}:event-bus/default"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "events:source"
+      values   = [local.deploy_event_source]
+    }
   }
 
   statement {

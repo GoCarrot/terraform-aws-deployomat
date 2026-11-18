@@ -19,6 +19,11 @@ RSpec.shared_context 'with stubbed aws' do
   before do
     Deployomat::CredentialCache.instance_variable_set(:@meta_role_credentials, nil)
     Deployomat::CredentialCache.instance_variable_set(:@role_credentials, nil)
+    # DeployEvent keeps its clients, which would keep the last example's stubs.
+    if defined?(Deployomat::DeployEvent)
+      Deployomat::DeployEvent.instance_variable_set(:@ec2_client, nil)
+      Deployomat::DeployEvent.instance_variable_set(:@events_client, nil)
+    end
 
     Aws.config.update(
       stub_responses: true,

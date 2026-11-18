@@ -1,3 +1,9 @@
+## Unreleased
+
+ENHANCEMENTS:
+
+* `deployomat` can put its own deploy events on the default EventBridge bus (source `omat.deployomat`, detail-type `Deployomat Deploy`, new `deploy_event` output). The detail is a `teak.deploy.notification/1` with the deployed AMI and all its tags (`ami_tags`). The Lambda role gains `ec2:DescribeImages`, because only the AMI's owner sees its tags, and `events:PutEvents` on the default bus for that source only.
+
 ## 0.4.1
 
 FEATURES:
