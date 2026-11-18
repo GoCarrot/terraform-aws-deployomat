@@ -201,6 +201,10 @@ RSpec.describe SlackNotify do
       expect(text('phase' => 'aborted', 'errors' => ['superseded'])).to end_with("\n\nsuperseded")
     end
 
+    it 'skips Rollout\'s progress events' do
+      expect(text('phase' => 'progress', 'status' => 'wait', 'progress' => 40)).to be_nil
+    end
+
     it 'skips a start or completion with SkipNotifications, but never a failure' do
       expect(text('skip_notifications' => true)).to be_nil
       expect(text('skip_notifications' => true, 'phase' => 'completed')).to be_nil

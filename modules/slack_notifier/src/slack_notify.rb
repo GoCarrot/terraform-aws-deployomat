@@ -56,6 +56,8 @@ module SlackNotify
   # and its tags. Same text as the status-event message, plus the commit the AMI was built from.
   def self.notification_for_deploy_event(note)
     phase = note['phase']
+    # Rollout's progress events don't go to Slack.
+    return { text: nil } if phase == 'progress'
     return { text: nil } if note['skip_notifications'] && %w[started completed].include?(phase)
 
     ami = note['ami']
