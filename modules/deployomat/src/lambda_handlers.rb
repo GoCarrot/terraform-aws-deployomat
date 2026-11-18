@@ -83,7 +83,7 @@ module LambdaFunctions
         else
           return { Status: :fail, Error: ["Unexpected step: '#{event['Step']}'"] }
         end
-      op.call
+      Deployomat::StepReport.new(event).call(event['Step'], op.call)
     end
 
     def self.undeploy(event:, context:)

@@ -305,6 +305,84 @@ module Deployomat
     end
   end
 
+  # Puts the finished deploy event for a step whose result ends the run, and marks that result
+  # with `Reported`, true only when the event landed. The state machine ends a Reported run so
+  # that status-event readers skip it, and any other run so that they report it.
+  #
+  # The handler runs it after the step returns, so the put is the last thing a step does and a
+  # step can't report `completed` and then raise.
+  class StepReport
+    CANCELLED = 'Deploy was cancelled due to a superseding deploy.'
+    CONCURRENT = 'A different deploy is running concurrently, and this deploy was configured to fail in such a case.'
+
+    # Step => result Status => phase. Rollout and Bake don't report a `fail`: the state machine
+    # sends it to Rollback, whose Report step does. CheckHealthy's goes to RollbackFromCheckHealthy,
+    # which has no Report, so it reports its own.
+    ENDINGS = {
+      'Start' => { 'fail' => 'failed', 'undeploying' => 'failed', 'deploy_active' => 'failed' },
+      'CheckHealthy' => { 'fail' => 'failed', 'deploy_aborted' => 'aborted' },
+      'Rollout' => { 'deploy_aborted' => 'aborted' },
+      'Coalesce' => { 'deploy_aborted' => 'aborted' },
+      'Bake' => { 'deploy_aborted' => 'aborted' },
+      'Finish' => { 'complete' => 'completed', 'deploy_aborted' => 'aborted' }
+    }.freeze
+
+    # `event` is the step's Lambda event. Every step that can report gets ExecutionArn (the
+    # deploy run's, also inside loop-wait), and the later steps get Start's Ami and
+    # SkipNotifications.
+    def initialize(event)
+      @event = event
+    end
+
+    # Only a result that can end the run gets `Reported`, and it always gets it, true or false:
+    # the state machine's endings read it by path.
+    def call(step, result)
+      phase = ENDINGS.dig(step, result[:Status].to_s)
+      return result unless phase
+      # A concurrent deploy set to cancel loops back into Start; only `fail` ends the run.
+      return result.merge(Reported: false) if concurrent_cancel?(result)
+
+      result.merge(Reported: report(phase, result))
+    end
+
+    private
+
+    def concurrent_cancel?(result)
+      result[:Status].to_s == 'deploy_active' && result[:OnConcurrentDeploy].to_s != 'fail'
+    end
+
+    def report(phase, result)
+      # A run started on the definition before this one passes no ExecutionArn: put nothing.
+      return false unless @event['ExecutionArn'] && @event['ServiceName']
+
+      DeployEvent.publish(detail(phase, result))
+    rescue StandardError => e
+      $stderr.puts("deploy event: could not report #{@event['ExecutionArn']}: #{e.class}: #{e.message}")
+      false
+    end
+
+    def detail(phase, result)
+      requested = @event['AmiId']
+      DeployEvent.detail(
+        kind: 'deploy', phase: phase, service: @event['ServiceName'], account: @event['AccountCanonicalSlug'],
+        execution_arn: @event['ExecutionArn'], ami_requested: requested, errors: errors(phase, result),
+        skip_notifications: skip_notifications?, **DeployEvent.ami_fields(result[:Ami] || @event['Ami'], requested)
+      )
+    end
+
+    def errors(phase, result)
+      errors = Array(result[:Error])
+      return errors unless errors.empty?
+      return [CONCURRENT] if result[:Status].to_s == 'deploy_active'
+
+      phase == 'aborted' ? [CANCELLED] : []
+    end
+
+    def skip_notifications?
+      @event['SkipNotifications'] == true || @event.dig('AllInput', 'DeployConfig', 'SkipNotifications') == true
+    end
+  end
+
   # The one ending no Lambda of ours decides: a step raised or timed out, or returned a status
   # nothing matched, and the run rolled back through the cancel state machine. Only Step
   # Functions sees that, so this step runs after Rollback, puts the failed event with the caught
