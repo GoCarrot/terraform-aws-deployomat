@@ -64,6 +64,20 @@ module Deployomat
       warn_empty("could not describe #{ami_id}: #{e.class}: #{e.message}")
     end
 
+    # The `ami` and `ami_tags` for a finished event. `resolved` is the Ami Start handed back
+    # ({Id, Tags}, symbol or string keys, depending on whether it went through Step Functions).
+    # Without one, the requested AmiId stands in when it's an AMI id, and its tags are looked up.
+    def self.ami_fields(resolved, requested)
+      if resolved
+        id = resolved[:Id] || resolved['Id']
+        tags = resolved[:Tags] || resolved['Tags']
+      else
+        id = requested
+        tags = ami_tags(requested)
+      end
+      { ami: id.to_s.start_with?('ami-') ? id : nil, ami_tags: tags || {} }
+    end
+
     # event_id is derived from the execution and phase, so a retried put is one line to a
     # reader that dedupes on it.
     def self.detail(kind:, phase:, service:, account:, execution_arn:, ami: nil, ami_requested: nil, ami_tags: {},
