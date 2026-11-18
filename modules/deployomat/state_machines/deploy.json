@@ -79,6 +79,16 @@
     "Fail": {
       "Type": "Fail"
     },
+    "RolledBack": {
+      "Comment": "The rollback's own failure, if any, is in the cancel run. Report reads a caught error from $.Error when there is one; it isn't named here because a Choice default reaches Rollback without one.",
+      "Type": "Pass",
+      "Parameters": {
+        "Status": "fail",
+        "Failed": true
+      },
+      "ResultPath": "$.Outcome",
+      "Next": "Report"
+    },
     "HandleConcurrentDeploy": {
       "Type": "Choice",
       "Choices": [
@@ -132,7 +142,7 @@
         }
       ],
       "ResultPath": null,
-      "Next": "Fail"
+      "Next": "RolledBack"
     },
     "RollbackFromCheckHealthy": {
       "Type": "Task",
@@ -397,6 +407,96 @@
         "Status": "deploy_aborted",
         "Error": "Deploy was cancelled due to a superseding deploy."
       }
+    },
+    "Report": {
+      "Comment": "Only after Rollback: the run rolled back after a Catch or an unmatched status, and no Lambda of ours decided that. Puts the failed event with the caught error. Takes the whole state, because which fields exist depends on how far the run got. An old Lambda that doesn't know this step returns no Reported, which ends the run unreported.",
+      "Type": "Task",
+      "Parameters": {
+        "AllInput.$": "$",
+        "ExecutionArn.$": "$$.Execution.Id",
+        "Step": "Report"
+      },
+      "Resource": "${deploy_lambda_arn}",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "MaxAttempts": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.ReportError",
+          "Next": "Unreported"
+        }
+      ],
+      "Next": "ReportBranch",
+      "ResultPath": "$.Outcome"
+    },
+    "ReportBranch": {
+      "Comment": "Report comes here with its Reported in $.Outcome. Rules run in order, so the BooleanEquals only sees a Reported that exists; a missing path would be States.Runtime.",
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Not": {
+            "Variable": "$.Outcome.Reported",
+            "IsPresent": true
+          },
+          "Next": "Unreported"
+        },
+        {
+          "Variable": "$.Outcome.Reported",
+          "BooleanEquals": true,
+          "Next": "Reported"
+        }
+      ],
+      "Default": "Unreported"
+    },
+    "Reported": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Outcome.Failed",
+          "IsPresent": true,
+          "Next": "FailReported"
+        }
+      ],
+      "Default": "ReportedOutcome"
+    },
+    "ReportedOutcome": {
+      "Type": "Pass",
+      "OutputPath": "$.Outcome",
+      "End": true
+    },
+    "FailReported": {
+      "Comment": "Status-event readers skip a FAILED run with this error: deployomat already reported it.",
+      "Type": "Fail",
+      "Error": "Deployomat.Reported",
+      "Cause": "The deploy failed and deployomat reported it."
+    },
+    "Unreported": {
+      "Comment": "Nothing was reported, or Report itself failed. End the way the run would have without it, unmarked, so status-event readers report it.",
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Outcome.Failed",
+          "IsPresent": true,
+          "Next": "Fail"
+        }
+      ],
+      "Default": "UnreportedOutcome"
+    },
+    "UnreportedOutcome": {
+      "Type": "Pass",
+      "OutputPath": "$.Outcome",
+      "End": true
     }
   }
 }
