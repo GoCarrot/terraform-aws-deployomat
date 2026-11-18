@@ -93,10 +93,14 @@ RSpec.describe Deployomat::DeployEvent do
       expect(detail).to include('ami' => 'ami-0abc', 'ami_requested' => '$LatestMinus:1')
     end
 
-    it 'keeps one event_id per progress, since a rollout puts several' do
-      detail = described_class.detail(**base, phase: 'progress', progress: 40)
+    it 'gives each progress its own event_id, the same on a retry, whatever the step put in it' do
+      ids = ['Shifted 40% of traffic', 'Shifted 40% of traffic', 'Wait for a/b passed', { 'n' => 1 }].map do |progress|
+        described_class.detail(**base, phase: 'progress', progress: progress)['event_id']
+      end
 
-      expect(detail).to include('event_id' => 'run-123/progress/40', 'progress' => 40)
+      expect(ids).to all(match(%r{\Arun-123/progress/\h{8}\z}))
+      expect(ids.uniq.length).to eq(3)
+      expect(described_class.detail(**base, phase: 'progress', progress: 'x')).to include('progress' => 'x')
     end
 
     it 'stringifies errors and defaults the optional fields' do

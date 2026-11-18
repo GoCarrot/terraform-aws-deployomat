@@ -452,7 +452,7 @@ module Deployomat
         puts "Shifted traffic on #{rule.rule_arn} to #{[total, 100].min}%"
       end
       result = total >= 100 ? { Status: :complete } : { Status: :wait, Wait: step_delay, Progress: total }
-      @reporter.emit('progress', status: result[:Status], progress: [total, 100].min)
+      @reporter.emit('progress', status: result[:Status], progress: "Shifted #{[total, 100].min}% of traffic to the new ASG")
       result
     end
   end

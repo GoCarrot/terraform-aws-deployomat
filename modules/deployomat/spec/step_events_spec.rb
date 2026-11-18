@@ -118,9 +118,11 @@ RSpec.describe LambdaFunctions::Handler, '.deploy step events' do
       expect(step('Rollout', rollout)).to eq(Status: :wait, Wait: 1, Progress: 60, Reported: false)
       expect(step('Rollout', rollout.merge('StepResult' => { 'Progress' => 60 })))
         .to eq(Status: :complete, Reported: false)
-      expect(finished_events.map { |e| e.values_at('event_id', 'step', 'status', 'progress', 'ami') }).to eq(
-        [['exec-1/progress/60', 'Rollout', 'wait', 60, ami], ['exec-1/progress/100', 'Rollout', 'complete', 100, ami]]
+      expect(finished_events.map { |e| e.values_at('step', 'status', 'progress', 'ami') }).to eq(
+        [['Rollout', 'wait', 'Shifted 60% of traffic to the new ASG', ami],
+         ['Rollout', 'complete', 'Shifted 100% of traffic to the new ASG', ami]]
       )
+      expect(finished_events.map { |e| e['event_id'] }.uniq.length).to eq(2)
     end
 
     it 'leaves a result no step reported unmarked, so the status-event readers report it' do
