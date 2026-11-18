@@ -2,9 +2,9 @@
 
 require_relative 'spec_helper'
 
-# Each step whose result ends the run puts its own finished event, with what deploy.json passes
-# it: the deploy run's ExecutionArn (also inside loop-wait), and Start's Ami and SkipNotifications.
-RSpec.describe LambdaFunctions::Handler, '.deploy step reports' do
+# Each step puts its own finished event where it decides the run is over, with what deploy.json
+# passes it: the deploy run's ExecutionArn (also inside loop-wait), and Start's Ami and SkipNotifications.
+RSpec.describe LambdaFunctions::Handler, '.deploy step events' do
   include_context 'with deploy world'
 
   let(:execution_arn) { 'arn:aws:states:us-east-1:232340377988:execution:deploy:exec-1' }
@@ -32,7 +32,8 @@ RSpec.describe LambdaFunctions::Handler, '.deploy step reports' do
       expected = {
         'event_id' => 'exec-1/failed', 'execution_arn' => execution_arn, 'ami' => ami,
         'ami_tags' => { 'BuildCommit' => 'abc1234' },
-        'errors' => ["Could not load #{service}-template. Is ServiceName correct?"]
+        'errors' => ["Could not load #{service}-template. Is ServiceName correct?"],
+        'step' => 'Start', 'status' => 'fail'
       }
       expect(finished_events).to contain_exactly(include(expected))
     end
@@ -43,7 +44,8 @@ RSpec.describe LambdaFunctions::Handler, '.deploy step reports' do
 
       expect(start_run).to include(Status: :undeploying, Reported: true)
       expect(finished_events.first)
-        .to include('phase' => 'failed', 'errors' => ['Undeploy of thezoo in Dev in progress.'])
+        .to include('phase' => 'failed', 'status' => 'undeploying',
+                    'errors' => ['Undeploy of thezoo in Dev in progress.'])
     end
 
     it 'reports a concurrent deploy only when set to fail, since on cancel the run comes back to Start' do
@@ -54,7 +56,20 @@ RSpec.describe LambdaFunctions::Handler, '.deploy step reports' do
       expect(world.deploy_events).to be_empty
 
       expect(start_run(config: deploy_config.merge('OnConcurrentDeploy' => 'fail'))).to include(Reported: true)
-      expect(finished_events).to contain_exactly(include('phase' => 'failed', 'errors' => [Deployomat::StepReport::CONCURRENT]))
+      expect(finished_events).to contain_exactly(
+        include('phase' => 'failed', 'status' => 'deploy_active', 'errors' => [Deployomat::StartDeploy::CONCURRENT])
+      )
+    end
+
+    it 'puts failed after started when Start fails once it has the AMI, naming that AMI' do
+      world.with_template
+      world.images[ami] = { tags: { 'BuildCommit' => 'abc1234' } }
+      world.fail_with(:create_auto_scaling_group, 'ValidationError')
+      world.before_call(:put_events) { |ctx| sleep 0.2 if ctx.params[:entries].first[:detail].include?('"started"') }
+
+      expect(start_run).to include(Status: :fail, Reported: true)
+      expect(world.deploy_events.map { |e| e.values_at('phase', 'ami_tags') })
+        .to eq([['started', { 'BuildCommit' => 'abc1234' }], ['failed', { 'BuildCommit' => 'abc1234' }]])
     end
 
     it 'hands the later steps what they report with' do
@@ -62,8 +77,7 @@ RSpec.describe LambdaFunctions::Handler, '.deploy step reports' do
 
       result = start_run
 
-      expect(result).to include(Ami: { Id: ami, Tags: {} }, SkipNotifications: false)
-      expect(result).not_to include(:Reported)
+      expect(result).to include(Ami: { Id: ami, Tags: {} }, SkipNotifications: false, Reported: false)
     end
   end
 
@@ -81,7 +95,7 @@ RSpec.describe LambdaFunctions::Handler, '.deploy step reports' do
       expected = {
         'event_id' => 'exec-1/failed', 'execution_arn' => execution_arn, 'ami' => ami,
         'ami_tags' => { 'BuildCommit' => '09c4f525' },
-        'errors' => ['Service did not become healthy. Have 0 of 3 instances.']
+        'errors' => ['Service did not become healthy. Have 0 of 3 instances.'], 'step' => 'CheckHealthy'
       }
       expect(finished_events).to contain_exactly(include(expected))
     end
@@ -92,15 +106,17 @@ RSpec.describe LambdaFunctions::Handler, '.deploy step reports' do
 
       expect(step('Coalesce', from_start.merge('TargetGroupArn' => new_tg_arn, 'RuleIds' => rule_ids)))
         .to eq(Status: :deploy_aborted, Reported: true)
-      expect(finished_events).to contain_exactly(include('phase' => 'aborted', 'errors' => [Deployomat::StepReport::CANCELLED]))
+      expect(finished_events).to contain_exactly(
+        include('phase' => 'aborted', 'step' => 'Coalesce', 'errors' => [Deployomat::DeployEvent::Reporter::CANCELLED])
+      )
     end
 
-    it 'leaves a failed Rollout or Bake to the Report after Rollback, so it is posted once' do
-      report = Deployomat::StepReport.new(from_start)
+    it 'leaves a result no step reported unmarked, so the status-event readers report it' do
+      started
 
-      expect(report.call('Rollout', { Status: :fail })).to eq(Status: :fail)
-      expect(report.call('Bake', { Status: :fail })).to eq(Status: :fail)
-      expect(world.deploy_events).to be_empty
+      expect(step('Bake', from_start.merge('BakeTime' => 0, 'StepResult' => { 'RemainingTime' => 0 })))
+        .to eq(Status: :complete, Reported: false)
+      expect(finished_events).to be_empty
     end
 
     it 'reports Finish as completed, after everything Finish does' do

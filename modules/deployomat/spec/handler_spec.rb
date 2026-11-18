@@ -42,7 +42,7 @@ RSpec.describe LambdaFunctions::Handler do
       expect(result).to eq(Status: :complete, Reported: false)
       expect(Deployomat::FinishDeploy).to have_received(:new).with(
         have_attributes(deploy_id: 'deploy-exec-1', primary_key: "#{slug}.#{service}"),
-        allow_undeploy: nil, automatic_undeploy_minutes: nil
+        allow_undeploy: nil, automatic_undeploy_minutes: nil, reporter: be_a(Deployomat::DeployEvent::Reporter)
       )
     end
   end

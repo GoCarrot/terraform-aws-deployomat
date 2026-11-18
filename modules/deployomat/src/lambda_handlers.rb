@@ -48,28 +48,30 @@ module LambdaFunctions
         deploy_id: "deploy-#{event['DeployId']}"
       }
       config = Deployomat::Config.new(**args)
+      # Each step puts its own deploy events through this, where it decides how the run went.
+      reporter = Deployomat::DeployEvent::Reporter.for_step(event)
       op =
         case event['Step']
         when 'Start'
           Deployomat::StartDeploy.new(
-            config, ami_id: event['AmiId'], deploy_config: event.dig('AllInput', 'DeployConfig'),
-            execution_arn: event['ExecutionArn']
+            config, ami_id: event['AmiId'], deploy_config: event.dig('AllInput', 'DeployConfig'), reporter: reporter
           )
         when 'CheckHealthy'
           Deployomat::CheckHealthy.new(
             config, max_wait: event['WaitTime'], min_healthy: event['MinHealthy'],
             remaining_time: event.dig('StepResult', 'RemainingTime'),
-            target_group_arn: event['TargetGroupArn']
+            target_group_arn: event['TargetGroupArn'], reporter: reporter
           )
         when 'Rollout'
           Deployomat::Rollout.new(
             config, step_size: event['StepSize'], step_delay: event['StepDelay'],
             rule_ids: event['RuleIds'], target_group_arn: event['TargetGroupArn'],
-            old_target_group_arn: event['OldTargetGroupArn'], progress: event.dig('StepResult', 'Progress')
+            old_target_group_arn: event['OldTargetGroupArn'], progress: event.dig('StepResult', 'Progress'),
+            reporter: reporter
           )
         when 'Coalesce'
           Deployomat::Coalesce.new(
-            config, target_group_arn: event['TargetGroupArn'], rule_ids: event['RuleIds']
+            config, target_group_arn: event['TargetGroupArn'], rule_ids: event['RuleIds'], reporter: reporter
           )
         when 'Bake'
           Deployomat::Bake.new(
@@ -78,12 +80,16 @@ module LambdaFunctions
           )
         when 'Finish'
           Deployomat::FinishDeploy.new(
-            config, allow_undeploy: event['AllowUndeploy'], automatic_undeploy_minutes: event['AutomaticUndeployMinutes']
+            config, allow_undeploy: event['AllowUndeploy'], automatic_undeploy_minutes: event['AutomaticUndeployMinutes'],
+            reporter: reporter
           )
         else
           return { Status: :fail, Error: ["Unexpected step: '#{event['Step']}'"] }
         end
-      Deployomat::StepReport.new(event).call(event['Step'], op.call)
+      result = op.call
+      # deploy.json's endings read Reported. A result that ends the run without a step reporting it
+      # ends unmarked, and the Step Functions status-event readers report it instead.
+      result.key?(:Reported) ? result : result.merge(Reported: false)
     end
 
     def self.undeploy(event:, context:)

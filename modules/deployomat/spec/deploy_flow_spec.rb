@@ -17,7 +17,7 @@ RSpec.describe LambdaFunctions::Handler, '.deploy' do
       expect(started[:RuleIds].length).to eq(1)
 
       bake = { 'TargetGroupArn' => started[:NewTargetGroupArn], 'RuleIds' => started[:RuleIds], 'BakeTime' => 10 }
-      expect(loop_step('Bake', bake)).to eq(Status: :complete)
+      expect(loop_step('Bake', bake)).to eq(Status: :complete, Reported: false)
 
       finished = step('Finish', 'AllowUndeploy' => started[:AllowUndeploy],
                                 'AutomaticUndeployMinutes' => started[:AutomaticUndeployMinutes])
@@ -134,21 +134,22 @@ RSpec.describe LambdaFunctions::Handler, '.deploy' do
       world.healthy[new_tg_arn] = 3
       healthy = loop_step('CheckHealthy', 'WaitTime' => started[:WaitForHealthyTime], 'MinHealthy' => 3,
                                           'TargetGroupArn' => new_tg_arn)
-      expect(healthy).to eq(Status: :complete)
+      expect(healthy).to eq(Status: :complete, Reported: false)
 
       rollout = { 'StepSize' => 50, 'StepDelay' => 1, 'RuleIds' => started[:RuleIds], 'TargetGroupArn' => new_tg_arn,
                   'OldTargetGroupArn' => DeployWorld::PRODUCTION_TG }
-      expect(step('Rollout', rollout)).to eq(Status: :wait, Wait: 1, Progress: 50)
+      expect(step('Rollout', rollout)).to eq(Status: :wait, Wait: 1, Progress: 50, Reported: false)
       expect(weights(production_rule[:rule_arn])).to eq(DeployWorld::PRODUCTION_TG => 50, new_tg_arn => 50)
-      expect(step('Rollout', rollout.merge('StepResult' => { 'Progress' => 50 }))).to eq(Status: :complete)
+      expect(step('Rollout', rollout.merge('StepResult' => { 'Progress' => 50 })))
+        .to eq(Status: :complete, Reported: false)
       expect(weights(production_rule[:rule_arn])).to eq(DeployWorld::PRODUCTION_TG => 0, new_tg_arn => 100)
 
       coalesce = { 'TargetGroupArn' => new_tg_arn, 'RuleIds' => started[:RuleIds] }
-      expect(step('Coalesce', coalesce)).to eq(Status: :complete)
+      expect(step('Coalesce', coalesce)).to eq(Status: :complete, Reported: false)
       expect(weights(production_rule[:rule_arn])).to eq(new_tg_arn => 100)
 
       bake = coalesce.merge('BakeTime' => started[:WaitForBakeTime])
-      expect(loop_step('Bake', bake)).to eq(Status: :complete)
+      expect(loop_step('Bake', bake)).to eq(Status: :complete, Reported: false)
 
       finished = step('Finish', 'AllowUndeploy' => started[:AllowUndeploy],
                                 'AutomaticUndeployMinutes' => started[:AutomaticUndeployMinutes])
@@ -164,14 +165,14 @@ RSpec.describe LambdaFunctions::Handler, '.deploy' do
       world.healthy[new_tg_arn] = 4
 
       expect(step('CheckHealthy', 'MinHealthy' => 3, 'TargetGroupArn' => new_tg_arn, 'WaitTime' => 30)).to eq(
-        Status: :complete
+        Status: :complete, Reported: false
       )
     end
 
     it 'clamps weights when the step does not divide 100' do
       rule_id = started[:RuleIds].first
 
-      expect(loop_step('Rollout', rollout_event(started, step_size: 30))).to eq(Status: :complete)
+      expect(loop_step('Rollout', rollout_event(started, step_size: 30))).to eq(Status: :complete, Reported: false)
 
       expect(weights(rule_id)).to eq(DeployWorld::PRODUCTION_TG => 0, new_tg_arn => 100)
       sent = world.calls(:modify_rule).map do |rule|
@@ -222,9 +223,9 @@ RSpec.describe LambdaFunctions::Handler, '.deploy' do
       world.healthy[new_tg_arn] = 1
       event = { 'MinHealthy' => 3, 'TargetGroupArn' => new_tg_arn, 'WaitTime' => 30 }
 
-      expect(step('CheckHealthy', event)).to eq(Status: :wait, Wait: 15, RemainingTime: 15)
+      expect(step('CheckHealthy', event)).to eq(Status: :wait, Wait: 15, RemainingTime: 15, Reported: false)
       expect(step('CheckHealthy', event.merge('StepResult' => { 'RemainingTime' => 15 }))).to eq(
-        Status: :wait, Wait: 15, RemainingTime: 0
+        Status: :wait, Wait: 15, RemainingTime: 0, Reported: false
       )
       expect(step('CheckHealthy', event.merge('StepResult' => { 'RemainingTime' => 0 }))).to eq(
         Status: :fail, Reported: true, Error: ['Service did not become healthy. Have 1 of 3 instances.']
@@ -237,7 +238,7 @@ RSpec.describe LambdaFunctions::Handler, '.deploy' do
 
     def bake_and_finish(started)
       bake = { 'TargetGroupArn' => started[:NewTargetGroupArn], 'RuleIds' => started[:RuleIds], 'BakeTime' => 10 }
-      expect(loop_step('Bake', bake)).to eq(Status: :complete)
+      expect(loop_step('Bake', bake)).to eq(Status: :complete, Reported: false)
 
       step('Finish', 'AllowUndeploy' => started[:AllowUndeploy],
                      'AutomaticUndeployMinutes' => started[:AutomaticUndeployMinutes])

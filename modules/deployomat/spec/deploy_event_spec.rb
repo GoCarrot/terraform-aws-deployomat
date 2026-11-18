@@ -80,7 +80,7 @@ RSpec.describe Deployomat::DeployEvent do
         'schema' => 'teak.deploy.notification/1', 'event_id' => 'run-123/started', 'kind' => 'deploy',
         'phase' => 'started', 'service' => 'audience', 'account' => 'workload-prod', 'ami' => 'ami-0abc',
         'execution' => 'run-123', 'execution_arn' => execution_arn, 'errors' => [],
-        'skip_notifications' => false, 'ami_tags' => { 'BuildCommit' => '09c4f525' }
+        'skip_notifications' => false, 'ami_tags' => { 'BuildCommit' => '09c4f525' }, 'step' => nil, 'status' => nil
       )
       expect(Time.iso8601(detail['time'])).to be_within(5).of(Time.now)
       expect(detail).not_to include('ami_requested')
@@ -123,6 +123,67 @@ RSpec.describe Deployomat::DeployEvent do
       expect(worst[ec2] + worst[events]).to be <= 10
       expect(described_class.ec2_client.config).to be(ec2)
       expect(described_class.events_client.config).to be(events)
+    end
+  end
+
+  describe Deployomat::DeployEvent::Reporter do
+    let(:events) { Aws::EventBridge::Client.new(stub_responses: true) }
+    let(:reporter) do
+      described_class.new(execution_arn: execution_arn, service: 'audience', account: 'workload-prod', step: 'Rollout',
+                          ami_requested: '$LatestMinus:1', ami: { 'Id' => 'ami-0abc', 'Tags' => { 'A' => 'b' } })
+    end
+
+    before { allow(Deployomat::DeployEvent).to receive(:events_client).and_return(events) }
+
+    def put
+      events.api_requests.map { |r| JSON.parse(r[:params][:entries].first[:detail]) }
+    end
+
+    it 'puts an event with any phase, naming the step, and says it landed' do
+      expect(reporter.emit('rollout_step', status: :wait)).to be(true)
+
+      expected = {
+        'phase' => 'rollout_step', 'step' => 'Rollout', 'status' => 'wait', 'event_id' => 'run-123/rollout_step',
+        'ami' => 'ami-0abc', 'ami_tags' => { 'A' => 'b' }, 'ami_requested' => '$LatestMinus:1'
+      }
+      expect(put).to contain_exactly(include(expected))
+    end
+
+    it 'marks the result it ends the run with, keeping the result as the step returned it' do
+      expect(reporter.failed(Status: :fail, Error: ['boom'])).to eq(Status: :fail, Error: ['boom'], Reported: true)
+      expect(reporter.completed(Status: :complete)).to eq(Status: :complete, Reported: true)
+
+      expect(put.map { |d| d.values_at('phase', 'status', 'errors') })
+        .to eq([['failed', 'fail', ['boom']], ['completed', 'complete', []]])
+    end
+
+    it 'says why a deploy was aborted when the step gave no error' do
+      reporter.aborted(Status: :deploy_aborted)
+
+      expect(put.first['errors']).to eq([described_class::CANCELLED])
+    end
+
+    it 'puts nothing for a run on an older definition, which passes no ExecutionArn' do
+      old_run = described_class.for_step('ServiceName' => 'audience', 'Step' => 'Finish')
+
+      expect(old_run.completed(Status: :complete)).to eq(Status: :complete, Reported: false)
+      expect(events.api_requests).to be_empty
+    end
+
+    it 'does not raise when building the event goes wrong' do
+      allow(Deployomat::DeployEvent).to receive(:detail).and_raise(ArgumentError, 'bad')
+
+      expect { expect(reporter.emit('started')).to be(false) }.to output(/could not put started/).to_stderr
+    end
+
+    it 'takes SkipNotifications from deploy.json, or from Start\'s own DeployConfig' do
+      run = { 'ExecutionArn' => execution_arn, 'ServiceName' => 's' }
+      later = described_class.for_step(run.merge('SkipNotifications' => true))
+      start = described_class.for_step(run.merge('AllInput' => { 'DeployConfig' => { 'SkipNotifications' => true } }))
+      later.emit('a')
+      start.emit('b')
+
+      expect(put.map { |d| d['skip_notifications'] }).to eq([true, true])
     end
   end
 
