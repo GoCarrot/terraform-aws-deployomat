@@ -152,7 +152,7 @@ RSpec.describe LambdaFunctions::Handler, '.cancel' do
 
     it 'ends Finish as superseded when the row is taken before the final write' do
       cancel('Start')
-      take_over_before_write(2)
+      take_over_before_write(3)
 
       expect(cancel('Finish')).to eq(superseded)
     end

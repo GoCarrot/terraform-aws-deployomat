@@ -83,7 +83,7 @@ RSpec.describe 'state_machines/cancel.json and undeploy.json' do # rubocop:disab
     it 'ends in FinishCancel, whose result carries Reported, or in Fail' do
       ends = states.select { |_, s| s['End'] || %w[Fail Succeed].include?(s['Type']) }.keys
 
-      expect(ends).to match_array(%w[FinishCancel Superseded Fail FailReported])
+      expect(ends).to match_array(%w[FinishCancel Superseded NothingToCancel Fail FailReported])
     end
 
     it 'ends a lost lock in the shape FinishCancel does, as an aborted run nothing reports' do
@@ -91,6 +91,19 @@ RSpec.describe 'state_machines/cancel.json and undeploy.json' do # rubocop:disab
         'Variable' => '$.StartResult', 'StringEquals' => 'superseded', 'Next' => 'Superseded'
       )
       expect(states['Superseded']['Parameters']).to include('Status' => 'deploy_aborted', 'Reported' => false)
+    end
+
+    it 'ends a cancel a deploy started, with nothing left to cancel, so the deploy goes back to Start' do
+      rule = states['StartBranch']['Choices'].first
+      expect(rule['And']).to eq(
+        [{ 'Variable' => '$.AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID', 'IsPresent' => true },
+         { 'Variable' => '$.StartResult', 'StringEquals' => 'fail' }]
+      )
+      expect(rule['Next']).to eq('NothingToCancel')
+      expect(states['NothingToCancel']['Parameters']).to eq('Status' => 'no_active_deploy', 'Reported' => false)
+      expect(states['StartBranch']['Choices']).to include(
+        'Variable' => '$.StartResult', 'StringEquals' => 'fail', 'Next' => 'Report'
+      )
     end
   end
 end
