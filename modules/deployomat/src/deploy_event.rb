@@ -147,10 +147,11 @@ module Deployomat
 
       # A cancel or undeploy step. A cancel that another execution started reports nothing: its parent does.
       def self.for_run(event, kind)
-        input = event['AllInput']
+        input = event['AllInput'].is_a?(Hash) ? event['AllInput'] : {}
         new(
           execution_arn: event['ExecutionArn'], service: event['ServiceName'], account: event['AccountCanonicalSlug'],
-          step: event['Step'], kind: kind, silent: kind == 'cancel' && input.is_a?(Hash) && input.key?(PARENT_KEY)
+          step: event['Step'], kind: kind, silent: kind == 'cancel' && input.key?(PARENT_KEY),
+          skip_notifications: input.dig('DeployConfig', 'SkipNotifications') == true
         )
       end
 
@@ -223,7 +224,8 @@ module Deployomat
         all_input = {} unless all_input.is_a?(Hash)
         reporter = Reporter.new(
           execution_arn: execution_arn, service: all_input['ServiceName'], account: all_input['AccountCanonicalSlug'],
-          step: 'Report', kind: kind, silent: kind == 'cancel' && all_input.key?(PARENT_KEY)
+          step: 'Report', kind: kind, silent: kind == 'cancel' && all_input.key?(PARENT_KEY),
+          skip_notifications: all_input.dig('DeployConfig', 'SkipNotifications') == true
         )
         { Status: 'fail', Error: [error], Reported: reporter.emit('failed', status: 'fail', errors: [error]) }
       end

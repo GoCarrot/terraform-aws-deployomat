@@ -110,6 +110,27 @@ RSpec.describe LambdaFunctions::Handler, '.cancel and .undeploy events' do
     end
   end
 
+  describe 'SkipNotifications' do
+    let(:input) { base_event.merge('DeployConfig' => { 'SkipNotifications' => true }) }
+
+    it 'is carried by undeploy and cancel events, as the status path read it' do
+      world.with_template.with_production
+      undeploy_step(input: input)
+      expect(world.deploy_events.map { |e| e['skip_notifications'] }).to eq([true, true])
+
+      world.requests.clear
+      expect(cancel_step('Report', input: input.merge('StartResult' => 'fail'))).to include(Reported: true)
+      expect(world.deploy_events).to contain_exactly(include('kind' => 'cancel', 'skip_notifications' => true))
+    end
+
+    it 'is false when the input has none' do
+      world.with_template.with_production
+      undeploy_step
+
+      expect(world.deploy_events.map { |e| e['skip_notifications'] }).to eq([false, false])
+    end
+  end
+
   describe 'a top-level cancel' do
     before do
       world.with_template.with_production
