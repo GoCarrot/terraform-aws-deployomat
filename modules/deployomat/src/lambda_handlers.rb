@@ -81,7 +81,8 @@ module LambdaFunctions
         when 'Bake'
           Deployomat::Bake.new(
             config, target_group_arn: event['TargetGroupArn'], rule_ids: event['RuleIds'],
-            bake_time: event['BakeTime'], remaining_time: event.dig('StepResult', 'RemainingTime')
+            bake_time: event['BakeTime'], remaining_time: event.dig('StepResult', 'RemainingTime'),
+            reporter: reporter
           )
         when 'Finish'
           Deployomat::FinishDeploy.new(
