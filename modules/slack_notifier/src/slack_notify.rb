@@ -24,11 +24,15 @@ module SlackNotify
     'Authorization' => "Bearer #{ENV['SLACK_BOT_TOKEN']}"
   }
 
-  # The error of a deploy run that failed after deployomat reported it (deploy.json FailReported).
+  # The error of a run that failed after deployomat reported it (FailReported, in each of the three machines).
   REPORTED_ERROR = 'Deployomat.Reported'
+  # Present in the input of an execution that another execution started: the cancels a deploy or
+  # undeploy kicks off for a concurrent deploy or a rollback. Its parent reports.
+  PARENT_KEY = 'AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID'
+  KINDS = %w[deploy cancel undeploy].freeze
   DEPLOY_PHASES = { 'started' => 'Started', 'completed' => 'Completed', 'aborted' => 'Aborted', 'failed' => 'Failed' }
 
-  # True when deployomat already reported this deploy run itself (see its README, "Deploy events").
+  # True when deployomat already reported this run itself (see its README, "Deploy events").
   def self.reported_by_deployomat?(event)
     detail = event['detail']
     case detail['status']
@@ -47,29 +51,55 @@ module SlackNotify
     {}
   end
 
-  # Only deploy notifications; other kinds read differently.
-  def self.deploy_notification?(note)
-    note.is_a?(Hash) && note['schema'] == 'teak.deploy.notification/1' && note['kind'] == 'deploy'
+  # True for a cancel that a deploy or undeploy started; the parent's finish line covers it.
+  def self.nested_cancel?(event)
+    parse_object(event.dig('detail', 'input')).key?(PARENT_KEY)
   end
 
-  # One of deployomat's own deploy events: a teak.deploy.notification/1 with the deployed AMI
-  # and its tags. Same text as the status-event message, plus the commit the AMI was built from.
+  def self.deploy_notification?(note)
+    note.is_a?(Hash) && note['schema'] == 'teak.deploy.notification/1' && KINDS.include?(note['kind'])
+  end
+
+  # The extra block a completed undeploy carries, when this account turns the techno on.
+  def self.undeploy_techno(text)
+    return { text: text } unless ENV['UNDEPLOY_TECHNO'] == 'true'
+
+    { text: text, blocks: [
+      { type: 'section', text: { type: 'mrkdwn', text: text } },
+      { type: 'section', text: { type: 'mrkdwn', text: "<#{ENV['TECHNO_BEATS']}>" } }
+    ] }
+  end
+
+  # One of deployomat's own events: a teak.deploy.notification/1 of kind deploy, cancel or undeploy.
+  # Same text as the status-event message. A deploy adds the AMI and the commit it was built from.
   def self.notification_for_deploy_event(note)
     phase = note['phase']
     # Rollout's progress events don't go to Slack.
     return { text: nil } if phase == 'progress'
     return { text: nil } if note['skip_notifications'] && %w[started completed].include?(phase)
 
+    execution = "Execution <https://console.aws.amazon.com/states/home?region=#{ENV['AWS_REGION']}#/executions/details/#{note['execution_arn']}|#{note['execution']}>"
+    base, details = case note['kind']
+                    when 'cancel' then ["Cancel deployment #{note['service']} to #{note['account']}", execution]
+                    when 'undeploy' then ["Undeploy #{note['service']} from #{note['account']}", execution]
+                    else ["Deploy #{note['service']} to #{note['account']}", "#{ami_details(note)}, #{execution}"]
+                    end
+    label = DEPLOY_PHASES.fetch(phase) { "Unknown result #{phase}" }
+    text = "#{base}: #{label} (#{details})"
+    errors = Array(note['errors'])
+    text = "#{text}\n\n#{errors.join("\n")}" if %w[failed aborted].include?(phase) && !errors.empty?
+    return undeploy_techno(text) if note['kind'] == 'undeploy' && phase == 'completed'
+
+    { text: text }
+  end
+
+  # "AMI <link>, commit abc1234": the AMI a deploy launched, or the one it asked for when none resolved.
+  def self.ami_details(note)
     ami = note['ami']
     ami_text = ami ? "AMI <https://console.aws.amazon.com/ec2/v2/home?region=#{ENV['AWS_REGION']}#ImageDetails:imageId=#{ami}|#{ami}>" : "AMI #{note['ami_requested'] || 'unknown'}"
     commit = note.dig('ami_tags', 'BuildCommit').to_s
     commit_text = commit.match?(/\A\h{7,40}\z/) ? ", commit #{commit[0, 7]}" : ''
-    details = "(#{ami_text}#{commit_text}, Execution <https://console.aws.amazon.com/states/home?region=#{ENV['AWS_REGION']}#/executions/details/#{note['execution_arn']}|#{note['execution']}>)"
-    label = DEPLOY_PHASES.fetch(phase) { "Unknown result #{phase}" }
-    text = "Deploy #{note['service']} to #{note['account']}: #{label} #{details}"
-    errors = Array(note['errors'])
-    text = "#{text}\n\n#{errors.join("\n")}" if %w[failed aborted].include?(phase) && !errors.empty?
-    { text: text }
+    "#{ami_text}#{commit_text}"
   end
 
   def self.notification_for_event(event)
@@ -160,15 +190,7 @@ module SlackNotify
       output = JSON.parse(detail['output'])
       out_status = output['Status']
       if out_status == 'complete'
-        text = "#{undeploy_base}: Completed #{undeploy_details}"
-        if ENV['UNDEPLOY_TECHNO'] == 'true'
-          { text: text, blocks: [
-            {type: "section", text: { type: "mrkdwn", text: text }},
-            {type: "section", text: { type: "mrkdwn", text: "<#{ENV['TECHNO_BEATS']}>"}}
-          ]}
-        else
-          { text: text }
-        end
+        undeploy_techno("#{undeploy_base}: Completed #{undeploy_details}")
       elsif out_status == 'fail'
         { text: "#{undeploy_base}: Failed #{undeploy_details}\n\n#{output['Error'].join("\n")}" }
       else
@@ -214,8 +236,13 @@ module SlackNotify
 
       request.merge!(notification_for_event(event))
     elsif sfn_arn == ENV['UNDEPLOY_SFN_ARN']
+      return 'Skipping notification: deployomat reported it.' if reported_by_deployomat?(event)
+
       request.merge!(notification_for_undeploy(event))
     elsif sfn_arn == ENV['CANCEL_SFN_ARN']
+      return 'Skipping notification: deployomat reported it.' if reported_by_deployomat?(event)
+      return 'Skipping notification: its parent reports it.' if nested_cancel?(event)
+
       request.merge!(notification_for_cancel(event))
     else
       puts event
