@@ -16,15 +16,21 @@
 
 require 'aws-sdk-ec2'
 require 'aws-sdk-eventbridge'
+require 'digest'
 require 'json'
 require 'time'
 
 module Deployomat
   # Deployomat's own deploy event, put on the default EventBridge bus of the account it runs
   # in. The detail is a Teak deploy notification (`teak.deploy.notification/1`, the shape
-  # notification_log writes), with `ami` as the AMI actually deployed and two more fields:
+  # notification_log writes), with `ami` as the AMI actually deployed and five more fields:
   #   ami_requested  the AmiId the deploy was started with, when it was a `$` command
   #   ami_tags       every tag on the AMI, {} when there are none or they can't be read
+  #   step           the step that put the event (Start, CheckHealthy, Finish, Report...)
+  #   status         that step's own Status (undeploying, deploy_active, fail...)
+  #   progress       what the step says about where it is, on `progress` events: free-form, in
+  #                  practice a line of text ("Shifted 40% of traffic to the new ASG")
+  # `step`, `status` and `progress` are always present, and null when unset, so every event has the same keys.
   #
   # Reporting never fails a deploy: a lookup or put that goes wrong is one line on stderr.
   # `publish` says whether the event landed, so the caller can leave the run unreported and
@@ -78,14 +84,14 @@ module Deployomat
       { ami: id.to_s.start_with?('ami-') ? id : nil, ami_tags: tags || {} }
     end
 
-    # event_id is derived from the execution and phase, so a retried put is one line to a
-    # reader that dedupes on it.
+    # event_id is derived from the execution and phase, plus a hash of the progress when there is one
+    # (a run puts several), so a retried put is one line to a reader that dedupes on it.
     def self.detail(kind:, phase:, service:, account:, execution_arn:, ami: nil, ami_requested: nil, ami_tags: {},
-                    errors: [], skip_notifications: false)
+                    errors: [], skip_notifications: false, step: nil, status: nil, progress: nil)
       execution = execution_arn.to_s.split(':').last
       detail = {
         'schema' => SCHEMA,
-        'event_id' => "#{execution}/#{phase}",
+        'event_id' => [execution, phase, progress && Digest::SHA256.hexdigest(JSON.generate(progress))[0, 8]].compact.join('/'),
         'time' => Time.now.utc.iso8601,
         'kind' => kind,
         'phase' => phase,
@@ -96,7 +102,10 @@ module Deployomat
         'execution_arn' => execution_arn,
         'errors' => Array(errors).map(&:to_s),
         'skip_notifications' => skip_notifications == true,
-        'ami_tags' => ami_tags || {}
+        'ami_tags' => ami_tags || {},
+        'step' => step,
+        'status' => status&.to_s,
+        'progress' => progress
       }
       detail['ami_requested'] = ami_requested if ami_requested && ami_requested != ami
       detail
@@ -120,6 +129,74 @@ module Deployomat
       warn_false("put_events rejected #{detail['event_id']}: #{entry&.error_code} #{entry&.error_message}")
     rescue StandardError => e
       warn_false("put_events failed for #{detail['event_id']}: #{e.class}: #{e.message}")
+    end
+
+    # What a step uses to put its own deploy events. The deploy handler builds one per call from the
+    # step's Lambda event and hands it to the step, which calls it where it decides:
+    #
+    #   return @reporter.failed(Status: :fail, Error: [...])   # puts `failed`, returns the result + Reported
+    #   @reporter.emit('progress', progress: 'Shifted 40%')   # any other event, true when it landed
+    #
+    # It needs the deploy run's ExecutionArn. A run started on an older definition doesn't pass one,
+    # so it puts nothing and every result comes back Reported false.
+    class Reporter
+      CANCELLED = 'Deploy was cancelled due to a superseding deploy.'
+
+      # `event` is the deploy Lambda's event. Steps after Start get Start's Ami and SkipNotifications
+      # from deploy.json; Start has its DeployConfig.
+      def self.for_step(event)
+        new(
+          execution_arn: event['ExecutionArn'], service: event['ServiceName'], account: event['AccountCanonicalSlug'],
+          step: event['Step'], ami_requested: event['AmiId'], ami: event['Ami'],
+          skip_notifications: event['SkipNotifications'] == true ||
+                              event.dig('AllInput', 'DeployConfig', 'SkipNotifications') == true
+        )
+      end
+
+      # `ami` is the AMI Start resolved, as {Id, Tags}. Without one, `ami_requested` stands in.
+      def initialize(execution_arn:, service:, account:, step:, ami_requested: nil, ami: nil, skip_notifications: false)
+        @execution_arn = execution_arn
+        @service = service
+        @account = account
+        @step = step
+        @ami_requested = ami_requested
+        @ami = ami
+        @skip_notifications = skip_notifications
+      end
+
+      # Puts one deploy event with any phase. True only when it landed; it never raises.
+      def emit(phase, status: nil, errors: [], ami: @ami, progress: nil)
+        return false unless @execution_arn && @service
+
+        DeployEvent.publish(DeployEvent.detail(
+          kind: 'deploy', phase: phase, service: @service, account: @account, execution_arn: @execution_arn,
+          ami_requested: @ami_requested, errors: errors, skip_notifications: @skip_notifications,
+          step: @step, status: status, progress: progress, **DeployEvent.ami_fields(ami, @ami_requested)
+        ))
+      rescue StandardError => e
+        DeployEvent.warn_false("could not put #{phase} for #{@execution_arn}: #{e.class}: #{e.message}")
+      end
+
+      # A result that ends the run: put its finished event, and mark the result Reported, which
+      # the state machine's endings read. The errors default to the result's own Error.
+      # The result is the step's own, as keywords: `failed(Status: :fail, Error: [...])`.
+      def completed(errors: nil, ami: @ami, **result)
+        finish('completed', result, errors, ami)
+      end
+
+      def failed(errors: nil, ami: @ami, **result)
+        finish('failed', result, errors, ami)
+      end
+
+      def aborted(errors: nil, ami: @ami, **result)
+        finish('aborted', result, errors || (Array(result[:Error]).empty? ? [CANCELLED] : nil), ami)
+      end
+
+      private
+
+      def finish(phase, result, errors, ami)
+        result.merge(Reported: emit(phase, status: result[:Status], errors: errors || Array(result[:Error]), ami: ami))
+      end
     end
 
     def self.warn_empty(message)

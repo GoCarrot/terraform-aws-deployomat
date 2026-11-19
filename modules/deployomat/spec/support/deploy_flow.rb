@@ -2,6 +2,8 @@
 
 # Drives the Lambdas one Step at a time, the way state_machines/ do, against a stateful
 # fake of the account (deploy_world.rb).
+DEPLOY_EXECUTION_ARN = 'arn:aws:states:us-east-1:232340377988:execution:deploy:exec-1'
+
 RSpec.shared_context 'with deploy world' do
   include_context 'with stubbed aws'
 
@@ -29,8 +31,11 @@ RSpec.shared_context 'with deploy world' do
     { 'AccountCanonicalSlug' => slug, 'ServiceName' => service }
   end
 
+  # Every step gets the deploy run's ARN, as deploy.json passes it, so steps that end the run
+  # report. Pass 'ExecutionArn' => nil for a run on the definition before this one.
   def step(name, event = {})
-    event = base_event.merge('DeployId' => 'exec-1', 'Step' => name).merge(event)
+    event = base_event.merge('DeployId' => 'exec-1', 'Step' => name, 'ExecutionArn' => DEPLOY_EXECUTION_ARN)
+                      .merge(event)
     LambdaFunctions::Handler.deploy(event: event, context: nil)
   end
 

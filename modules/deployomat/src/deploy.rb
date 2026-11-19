@@ -39,11 +39,13 @@ module Deployomat
     GREATER_THAN_ZERO = %i[traffic_shift_per_step].freeze
     NOT_NEGATIVE = %i[bake_time wait_per_step health_timeout].freeze
 
-    def initialize(config, ami_id:, deploy_config:, execution_arn: nil)
+    CONCURRENT = 'A different deploy is running concurrently, and this deploy was configured to fail in such a case.'
+
+    def initialize(config, ami_id:, deploy_config:, reporter:)
       deploy_config = deploy_config || {}
       @config = config
       @ami_id = ami_id
-      @execution_arn = execution_arn
+      @reporter = reporter
       @skip_notifications = deploy_config['SkipNotifications'] == true
       @new_asg_name = "#{service_name}-#{Time.now.utc.strftime("%Y%m%dT%H%M%SZ")}"
       @new_tg_name = "#{service_name[0...15]}-#{Time.now.utc.strftime("%Y%m%dT%H%M%SZ")}"
@@ -117,7 +119,9 @@ module Deployomat
         deploy_asg = @config.deploy_asg
         if deploy_asg && !deploy_asg.empty?
           puts "Deployment of #{service_name} in #{account_name} still in progress"
-          return { Status: :deploy_active, OnConcurrentDeploy: @on_concurrent_deploy }
+          response = { Status: :deploy_active, OnConcurrentDeploy: @on_concurrent_deploy }
+          # On cancel the run comes back to Start, so only `fail` ends it.
+          return @on_concurrent_deploy.to_s == 'fail' ? failed(response, errors: [CONCURRENT]) : response
         elsif @config.undeploying?
           error "Undeploy of #{service_name} in #{account_name} in progress."
           return error_response(:undeploying)
@@ -283,25 +287,27 @@ module Deployomat
       @errors << msg
     end
 
+    # Ends Start with the errors so far, and puts the `failed` event for them.
     def error_response(status = :fail)
-      { Status: status, Error: @errors }
+      failed({ Status: status, Error: @errors })
     end
 
-    # The AMI this deploy launches, whatever AmiId named it, with its tags. Report reads it
-    # back from this step's result for the finished event, so the tags are looked up once.
+    # The AMI this deploy launches, whatever AmiId named it, with its tags. The later steps get it
+    # back from this step's result for their events, so the tags are looked up once.
     def report_started(resolved_ami_id)
       @started = Thread.new do
-        tags = DeployEvent.ami_tags(resolved_ami_id)
-        DeployEvent.publish(DeployEvent.detail(
-          kind: 'deploy', phase: 'started', service: service_name, account: @config.account_canonical_slug,
-          execution_arn: @execution_arn, ami: resolved_ami_id, ami_requested: ami_id, ami_tags: tags,
-          skip_notifications: @skip_notifications
-        ))
-        { Id: resolved_ami_id, Tags: tags }
+        ami = { Id: resolved_ami_id, Tags: DeployEvent.ami_tags(resolved_ami_id) }
+        @reporter.emit('started', ami: ami)
+        ami
       rescue StandardError => e
         $stderr.puts("deploy event: started report failed: #{e.class}: #{e.message}")
         { Id: resolved_ami_id, Tags: {} }
       end
+    end
+
+    # Waits for the started event first, so the failed one follows it and names the same AMI.
+    def failed(response, errors: nil)
+      @reporter.failed(**response, errors: errors, ami: @started&.value)
     end
   end
 
@@ -323,28 +329,18 @@ module Deployomat
 
     def call
       outcome = @all_input['Outcome'].is_a?(Hash) ? @all_input['Outcome'] : {}
-      return outcome.merge('Reported' => false) unless @all_input['ServiceName']
-
-      reported =
-        begin
-          DeployEvent.publish(detail(outcome))
-        rescue StandardError => e
-          $stderr.puts("deploy event: could not report #{@execution_arn}: #{e.class}: #{e.message}")
-          false
-        end
+      phase = PHASES.fetch(outcome['Status'], 'unknown')
+      reported = reporter.emit(phase, status: outcome['Status'], errors: errors(outcome))
       outcome.merge('Reported' => reported)
     end
 
     private
 
-    def detail(outcome)
-      requested = @all_input['AmiId']
-      DeployEvent.detail(
-        kind: 'deploy', phase: PHASES.fetch(outcome['Status'], 'unknown'),
-        service: @all_input['ServiceName'], account: @all_input['AccountCanonicalSlug'],
-        execution_arn: @execution_arn, ami_requested: requested, errors: errors(outcome),
-        skip_notifications: @all_input.dig('DeployConfig', 'SkipNotifications') == true,
-        **DeployEvent.ami_fields(@all_input.dig('StartDeploy', 'Ami'), requested)
+    def reporter
+      DeployEvent::Reporter.new(
+        execution_arn: @execution_arn, service: @all_input['ServiceName'], account: @all_input['AccountCanonicalSlug'],
+        step: 'Report', ami_requested: @all_input['AmiId'], ami: @all_input.dig('StartDeploy', 'Ami'),
+        skip_notifications: @all_input.dig('DeployConfig', 'SkipNotifications') == true
       )
     end
 
@@ -379,8 +375,9 @@ module Deployomat
 
     attr_reader :max_wait, :min_healthy, :remaining_time, :target_group_arn, :seconds_to_wait
 
-    def initialize(config, max_wait:, min_healthy:, target_group_arn:, remaining_time: nil)
+    def initialize(config, max_wait:, min_healthy:, target_group_arn:, reporter:, remaining_time: nil)
       @config = config
+      @reporter = reporter
       @max_wait = max_wait
       @min_healthy = min_healthy
       @remaining_time = remaining_time || max_wait
@@ -398,7 +395,7 @@ module Deployomat
         @config.assert_active
       rescue Aws::DynamoDB::Errors::ConditionalCheckFailedException
         puts NOT_ACTIVE_MSG
-        return { Status: :deploy_aborted }
+        return @reporter.aborted(Status: :deploy_aborted)
       end
       puts ACTIVE_ASSERT_MSG
 
@@ -410,7 +407,9 @@ module Deployomat
       elsif remaining_time >= seconds_to_wait
         { Status: :wait, Wait: seconds_to_wait, RemainingTime: remaining_time - seconds_to_wait }
       else
-        { Status: :fail, Error: ["Service did not become healthy. Have #{healthy_count} of #{min_healthy} instances."] }
+        @reporter.failed(
+          Status: :fail, Error: ["Service did not become healthy. Have #{healthy_count} of #{min_healthy} instances."]
+        )
       end
     end
   end
@@ -422,8 +421,10 @@ module Deployomat
 
     attr_reader :step_size, :step_delay, :rule_ids, :target_group_arn, :old_target_group_arn, :progress
 
-    def initialize(config, step_size:, step_delay:, rule_ids:, target_group_arn:, old_target_group_arn:, progress:)
+    def initialize(config, step_size:, step_delay:, rule_ids:, target_group_arn:, old_target_group_arn:, progress:,
+                   reporter:)
       @config = config
+      @reporter = reporter
       @step_size = step_size
       @step_delay = step_delay
       @rule_ids = rule_ids
@@ -444,17 +445,15 @@ module Deployomat
           @config.assert_active
         rescue Aws::DynamoDB::Errors::ConditionalCheckFailedException
           puts NOT_ACTIVE_MSG
-          return { Status: :deploy_aborted }
+          return @reporter.aborted(Status: :deploy_aborted)
         end
         puts ACTIVE_ASSERT_MSG
         elbv2.shift_traffic(rule, step_size, old_target_group_arn, target_group_arn)
         puts "Shifted traffic on #{rule.rule_arn} to #{[total, 100].min}%"
       end
-      if total >= 100
-        { Status: :complete }
-      else
-        { Status: :wait, Wait: step_delay, Progress: total }
-      end
+      result = total >= 100 ? { Status: :complete } : { Status: :wait, Wait: step_delay, Progress: total }
+      @reporter.emit('progress', status: result[:Status], progress: "Shifted #{[total, 100].min}% of traffic to the new ASG")
+      result
     end
   end
 
@@ -465,8 +464,9 @@ module Deployomat
 
     attr_reader :rule_ids, :target_group_arn
 
-    def initialize(config, rule_ids:, target_group_arn:)
+    def initialize(config, rule_ids:, target_group_arn:, reporter:)
       @config = config
+      @reporter = reporter
       @rule_ids = rule_ids
       @target_group_arn = target_group_arn
     end
@@ -482,7 +482,7 @@ module Deployomat
           @config.assert_active
         rescue Aws::DynamoDB::Errors::ConditionalCheckFailedException
           puts NOT_ACTIVE_MSG
-          return { Status: :deploy_aborted }
+          return @reporter.aborted(Status: :deploy_aborted)
         end
         puts ACTIVE_ASSERT_MSG
         elbv2.coalesce(rule, target_group_arn)
@@ -523,8 +523,9 @@ module Deployomat
 
     attr_reader :allow_undeploy, :automatic_undeploy_minutes
 
-    def initialize(config, allow_undeploy:, automatic_undeploy_minutes:)
+    def initialize(config, allow_undeploy:, automatic_undeploy_minutes:, reporter:)
       @config = config
+      @reporter = reporter
       @allow_undeploy = allow_undeploy
       @automatic_undeploy_minutes = automatic_undeploy_minutes
     end
@@ -537,7 +538,7 @@ module Deployomat
         @config.assert_active
       rescue Aws::DynamoDB::Errors::ConditionalCheckFailedException
         puts NOT_ACTIVE_MSG
-        return { Status: :deploy_aborted }
+        return @reporter.aborted(Status: :deploy_aborted)
       end
       puts ACTIVE_ASSERT_MSG
 
@@ -584,7 +585,7 @@ module Deployomat
       end
 
       puts "Deploy complete."
-      { Status: :complete }
+      @reporter.completed(Status: :complete)
     end
   end
 end

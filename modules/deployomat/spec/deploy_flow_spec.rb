@@ -17,12 +17,12 @@ RSpec.describe LambdaFunctions::Handler, '.deploy' do
       expect(started[:RuleIds].length).to eq(1)
 
       bake = { 'TargetGroupArn' => started[:NewTargetGroupArn], 'RuleIds' => started[:RuleIds], 'BakeTime' => 10 }
-      expect(loop_step('Bake', bake)).to eq(Status: :complete)
+      expect(loop_step('Bake', bake)).to eq(Status: :complete, Reported: false)
 
       finished = step('Finish', 'AllowUndeploy' => started[:AllowUndeploy],
                                 'AutomaticUndeployMinutes' => started[:AutomaticUndeployMinutes])
 
-      expect(finished).to eq(Status: :complete)
+      expect(finished).to eq(Reported: true, Status: :complete)
       expect(world.item).to include('production_asg_name' => new_asg_name, 'deploy_asg_name' => '')
       expect(world.calls(:delete_auto_scaling_group)).to be_empty
       expect(world.calls(:modify_launch_template)).to eq(
@@ -134,26 +134,27 @@ RSpec.describe LambdaFunctions::Handler, '.deploy' do
       world.healthy[new_tg_arn] = 3
       healthy = loop_step('CheckHealthy', 'WaitTime' => started[:WaitForHealthyTime], 'MinHealthy' => 3,
                                           'TargetGroupArn' => new_tg_arn)
-      expect(healthy).to eq(Status: :complete)
+      expect(healthy).to eq(Status: :complete, Reported: false)
 
       rollout = { 'StepSize' => 50, 'StepDelay' => 1, 'RuleIds' => started[:RuleIds], 'TargetGroupArn' => new_tg_arn,
                   'OldTargetGroupArn' => DeployWorld::PRODUCTION_TG }
-      expect(step('Rollout', rollout)).to eq(Status: :wait, Wait: 1, Progress: 50)
+      expect(step('Rollout', rollout)).to eq(Status: :wait, Wait: 1, Progress: 50, Reported: false)
       expect(weights(production_rule[:rule_arn])).to eq(DeployWorld::PRODUCTION_TG => 50, new_tg_arn => 50)
-      expect(step('Rollout', rollout.merge('StepResult' => { 'Progress' => 50 }))).to eq(Status: :complete)
+      expect(step('Rollout', rollout.merge('StepResult' => { 'Progress' => 50 })))
+        .to eq(Status: :complete, Reported: false)
       expect(weights(production_rule[:rule_arn])).to eq(DeployWorld::PRODUCTION_TG => 0, new_tg_arn => 100)
 
       coalesce = { 'TargetGroupArn' => new_tg_arn, 'RuleIds' => started[:RuleIds] }
-      expect(step('Coalesce', coalesce)).to eq(Status: :complete)
+      expect(step('Coalesce', coalesce)).to eq(Status: :complete, Reported: false)
       expect(weights(production_rule[:rule_arn])).to eq(new_tg_arn => 100)
 
       bake = coalesce.merge('BakeTime' => started[:WaitForBakeTime])
-      expect(loop_step('Bake', bake)).to eq(Status: :complete)
+      expect(loop_step('Bake', bake)).to eq(Status: :complete, Reported: false)
 
       finished = step('Finish', 'AllowUndeploy' => started[:AllowUndeploy],
                                 'AutomaticUndeployMinutes' => started[:AutomaticUndeployMinutes])
 
-      expect(finished).to eq(Status: :complete)
+      expect(finished).to eq(Reported: true, Status: :complete)
       expect(world.item).to include('production_asg_name' => new_asg_name)
       expect(world.calls(:delete_auto_scaling_group)).to eq([{ auto_scaling_group_name: old_asg, force_delete: true }])
       expect(world.calls(:delete_target_group)).to eq([{ target_group_arn: DeployWorld::PRODUCTION_TG }])
@@ -164,14 +165,14 @@ RSpec.describe LambdaFunctions::Handler, '.deploy' do
       world.healthy[new_tg_arn] = 4
 
       expect(step('CheckHealthy', 'MinHealthy' => 3, 'TargetGroupArn' => new_tg_arn, 'WaitTime' => 30)).to eq(
-        Status: :complete
+        Status: :complete, Reported: false
       )
     end
 
     it 'clamps weights when the step does not divide 100' do
       rule_id = started[:RuleIds].first
 
-      expect(loop_step('Rollout', rollout_event(started, step_size: 30))).to eq(Status: :complete)
+      expect(loop_step('Rollout', rollout_event(started, step_size: 30))).to eq(Status: :complete, Reported: false)
 
       expect(weights(rule_id)).to eq(DeployWorld::PRODUCTION_TG => 0, new_tg_arn => 100)
       sent = world.calls(:modify_rule).map do |rule|
@@ -222,12 +223,12 @@ RSpec.describe LambdaFunctions::Handler, '.deploy' do
       world.healthy[new_tg_arn] = 1
       event = { 'MinHealthy' => 3, 'TargetGroupArn' => new_tg_arn, 'WaitTime' => 30 }
 
-      expect(step('CheckHealthy', event)).to eq(Status: :wait, Wait: 15, RemainingTime: 15)
+      expect(step('CheckHealthy', event)).to eq(Status: :wait, Wait: 15, RemainingTime: 15, Reported: false)
       expect(step('CheckHealthy', event.merge('StepResult' => { 'RemainingTime' => 15 }))).to eq(
-        Status: :wait, Wait: 15, RemainingTime: 0
+        Status: :wait, Wait: 15, RemainingTime: 0, Reported: false
       )
       expect(step('CheckHealthy', event.merge('StepResult' => { 'RemainingTime' => 0 }))).to eq(
-        Status: :fail, Error: ['Service did not become healthy. Have 1 of 3 instances.']
+        Status: :fail, Reported: true, Error: ['Service did not become healthy. Have 1 of 3 instances.']
       )
     end
   end
@@ -237,7 +238,7 @@ RSpec.describe LambdaFunctions::Handler, '.deploy' do
 
     def bake_and_finish(started)
       bake = { 'TargetGroupArn' => started[:NewTargetGroupArn], 'RuleIds' => started[:RuleIds], 'BakeTime' => 10 }
-      expect(loop_step('Bake', bake)).to eq(Status: :complete)
+      expect(loop_step('Bake', bake)).to eq(Status: :complete, Reported: false)
 
       step('Finish', 'AllowUndeploy' => started[:AllowUndeploy],
                      'AutomaticUndeployMinutes' => started[:AutomaticUndeployMinutes])
@@ -248,7 +249,7 @@ RSpec.describe LambdaFunctions::Handler, '.deploy' do
 
       started = start
       expect(started).to include(Status: :success, RuleIds: '', NewTargetGroupArn: '')
-      expect(bake_and_finish(started)).to eq(Status: :complete)
+      expect(bake_and_finish(started)).to eq(Reported: true, Status: :complete)
 
       expect(world.item).to include('production_asg_name' => new_asg_name, 'deploy_asg_name' => '')
       expect(world.calls(:create_auto_scaling_group).first).not_to include(:target_group_arns)
@@ -263,7 +264,7 @@ RSpec.describe LambdaFunctions::Handler, '.deploy' do
       started = start
       expect(started).to include(Status: :success, RuleIds: '')
       expect(world.calls(:update_auto_scaling_group)).to eq([{ auto_scaling_group_name: old_asg, min_size: 3 }])
-      expect(bake_and_finish(started)).to eq(Status: :complete)
+      expect(bake_and_finish(started)).to eq(Reported: true, Status: :complete)
 
       expect(world.item).to include('production_asg_name' => new_asg_name)
       expect(world.calls(:delete_auto_scaling_group)).to eq([{ auto_scaling_group_name: old_asg, force_delete: true }])
@@ -277,20 +278,20 @@ RSpec.describe LambdaFunctions::Handler, '.deploy' do
     it 'fails when no AMI is given' do
       result = start(ami_id: '')
 
-      expect(result).to eq(Status: :fail, Error: ['No AMI specified'])
+      expect(result).to eq(Reported: true, Status: :fail, Error: ['No AMI specified'])
       expect(world.calls(:create_auto_scaling_group)).to be_empty
     end
 
     it 'fails on a negative bake time' do
       result = start(config: { 'BakeTime' => -1 })
 
-      expect(result).to eq(Status: :fail, Error: ['bake_time must not be negative'])
+      expect(result).to eq(Reported: true, Status: :fail, Error: ['bake_time must not be negative'])
     end
 
     it 'fails on a TrafficShiftPerStep of zero, which would never finish' do
       result = start(config: { 'TrafficShiftPerStep' => 0 })
 
-      expect(result).to eq(Status: :fail, Error: ['traffic_shift_per_step must be greater than zero'])
+      expect(result).to eq(Reported: true, Status: :fail, Error: ['traffic_shift_per_step must be greater than zero'])
       expect(world.item).not_to include('deploy_asg_name')
     end
 
@@ -303,20 +304,21 @@ RSpec.describe LambdaFunctions::Handler, '.deploy' do
     it 'fails when the template ASG is missing' do
       world.asgs.delete("#{service}-template")
 
-      expect(start).to eq(Status: :fail, Error: ["Could not load #{service}-template. Is ServiceName correct?"])
+      expect(start).to eq(Reported: true, Status: :fail,
+                          Error: ["Could not load #{service}-template. Is ServiceName correct?"])
     end
 
     it 'reports a deploy already in progress without touching anything' do
       world.item.merge!('deploy_id' => 'deploy-other', 'deploy_asg_name' => 'thezoo-other')
 
-      expect(start).to eq(Status: :deploy_active, OnConcurrentDeploy: 'rollback')
+      expect(start).to eq(Reported: false, Status: :deploy_active, OnConcurrentDeploy: 'rollback')
       expect(world.calls(:create_launch_template_version)).to be_empty
     end
 
     it 'reports an undeploy in progress' do
       world.item.merge!('deploy_id' => 'undeploy-other', 'undeploy_state' => 'undeploying')
 
-      expect(start).to eq(Status: :undeploying, Error: ['Undeploy of thezoo in Dev in progress.'])
+      expect(start).to eq(Reported: true, Status: :undeploying, Error: ['Undeploy of thezoo in Dev in progress.'])
     end
 
     it 'removes the target group it made when the ASG will not clone' do
@@ -505,7 +507,7 @@ RSpec.describe LambdaFunctions::Handler, '.deploy' do
 
     it 'stops CheckHealthy' do
       expect(step('CheckHealthy', 'MinHealthy' => 3, 'TargetGroupArn' => new_tg_arn, 'WaitTime' => 30)).to eq(
-        Status: :deploy_aborted
+        Status: :deploy_aborted, Reported: true
       )
     end
 
@@ -513,17 +515,18 @@ RSpec.describe LambdaFunctions::Handler, '.deploy' do
       result = step('Rollout', 'StepSize' => 50, 'StepDelay' => 1, 'RuleIds' => rule_ids,
                                'TargetGroupArn' => new_tg_arn, 'OldTargetGroupArn' => DeployWorld::PRODUCTION_TG)
 
-      expect(result).to eq(Status: :deploy_aborted)
+      expect(result).to eq(Reported: true, Status: :deploy_aborted)
       expect(world.calls(:modify_rule).length).to eq(1)
     end
 
     it 'stops Coalesce' do
-      expect(step('Coalesce', 'TargetGroupArn' => new_tg_arn, 'RuleIds' => rule_ids)).to eq(Status: :deploy_aborted)
+      expect(step('Coalesce', 'TargetGroupArn' => new_tg_arn, 'RuleIds' => rule_ids))
+        .to eq(Reported: true, Status: :deploy_aborted)
       expect(world.calls(:modify_rule).length).to eq(1)
     end
 
     it 'stops Finish without replacing production' do
-      expect(step('Finish', 'AllowUndeploy' => true)).to eq(Status: :deploy_aborted)
+      expect(step('Finish', 'AllowUndeploy' => true)).to eq(Reported: true, Status: :deploy_aborted)
       expect(world.calls(:delete_auto_scaling_group)).to be_empty
     end
   end
