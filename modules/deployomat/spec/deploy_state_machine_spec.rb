@@ -23,8 +23,9 @@ RSpec.describe 'state_machines/deploy.json' do # rubocop:disable RSpec/DescribeC
     end
   end
 
-  it 'runs Report only after Rollback, where no Lambda decided the ending' do
-    expect(states.select { |_, s| targets(s).include?('Report') }.keys).to eq(['RolledBack'])
+  it 'runs Report only where no Lambda decided the ending: after Rollback, or a cancel lost the lock' do
+    into_report = states.select { |_, s| targets(s).include?('Report') }.keys
+    expect(into_report).to match_array(%w[RolledBack SupersededDuringCancel])
     expect(states['Report']['ResultPath']).to eq('$.Outcome')
   end
 
@@ -85,5 +86,19 @@ RSpec.describe 'state_machines/deploy.json' do # rubocop:disable RSpec/DescribeC
     reads = after_failure.to_h { |name| [name, paths(states.fetch(name)).grep(/\A\$\.StartDeploy/)] }
 
     expect(reads.reject { |_, p| p.empty? }).to eq({})
+  end
+
+  # The cancel of a concurrent deploy can lose the deploy lock to another run's cancel. The loser is
+  # superseded: aborted through Report, not failed, and not back to Start to fight the winner.
+  it 'ends a deploy whose cancel lost the lock as aborted, not failed, and does not retry Start' do
+    expect(states['CancelConcurrentDeploy']['ResultPath']).to eq('$.Cancel')
+    expect(states['CancelConcurrentDeploy']['Catch']).to be_nil
+    rule = states['CancelBranch']['Choices'].first
+    expect(rule['And'].last).to eq('Variable' => '$.Cancel.Output.Status', 'StringEquals' => 'deploy_aborted')
+    expect(rule['Next']).to eq('SupersededDuringCancel')
+    expect(states['CancelBranch']['Default']).to eq('StartDeploy')
+    expect(states['SupersededDuringCancel']['Parameters']).to include('Status' => 'deploy_aborted')
+    expect(states['SupersededDuringCancel']['Next']).to eq('Report')
+    expect(states['SupersededDuringCancel']['ResultPath']).to eq('$.Outcome')
   end
 end

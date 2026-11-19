@@ -107,4 +107,54 @@ RSpec.describe LambdaFunctions::Handler, '.cancel' do
       expect(world.item).to include('production_asg_name' => old_asg, 'deploy_asg_name' => '')
     end
   end
+
+  # Two deploys cancel the same deploy: whoever writes the row's deploy_id last owns the cancel, and
+  # the other's next conditional write fails. That is the loser being superseded, not a failure.
+  describe 'losing the deploy lock to another cancel' do
+    let(:superseded) do
+      { Status: :deploy_aborted, Error: ['Deploy was cancelled due to a superseding deploy.'], Reported: false }
+    end
+
+    # Takes the row over just before the nth write to it.
+    def take_over_before_write(nth)
+      writes = 0
+      world.before_call(:update_item) do
+        writes += 1
+        world.item['deploy_id'] = 'cancel-other' if writes == nth
+      end
+    end
+
+    before do
+      world.with_template.with_production
+      start
+    end
+
+    it 'ends Start as superseded when the claim itself loses' do
+      take_over_before_write(1)
+
+      expect(cancel('Start')).to eq(:superseded)
+      expect(world.deploy_events.map { |e| e['kind'] }).to eq(['deploy'])
+    end
+
+    it 'ends Start as superseded when the row is taken after the claim' do
+      take_over_before_write(2)
+
+      expect(cancel('Start')).to eq(:superseded)
+    end
+
+    it 'ends Finish as superseded when the row is taken mid-cancel, and leaves the cleanup to the new owner' do
+      cancel('Start')
+      world.item['deploy_id'] = 'cancel-other'
+
+      expect(cancel('Finish')).to eq(superseded)
+      expect(world.calls(:delete_auto_scaling_group)).to be_empty
+    end
+
+    it 'ends Finish as superseded when the row is taken before the final write' do
+      cancel('Start')
+      take_over_before_write(3)
+
+      expect(cancel('Finish')).to eq(superseded)
+    end
+  end
 end

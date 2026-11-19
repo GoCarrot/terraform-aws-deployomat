@@ -20,9 +20,27 @@
       "Type": "Choice",
       "Choices": [
         {
+          "And": [
+            {
+              "Variable": "$.AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID",
+              "IsPresent": true
+            },
+            {
+              "Variable": "$.StartResult",
+              "StringEquals": "fail"
+            }
+          ],
+          "Next": "NothingToCancel"
+        },
+        {
           "Variable": "$.StartResult",
           "StringEquals": "fail",
           "Next": "Report"
+        },
+        {
+          "Variable": "$.StartResult",
+          "StringEquals": "superseded",
+          "Next": "Superseded"
         },
         {
           "Variable": "$.StartResult",
@@ -39,6 +57,27 @@
     },
     "Fail": {
       "Type": "Fail"
+    },
+    "NothingToCancel": {
+      "Comment": "A deploy started this cancel, and the deploy it meant to cancel is already gone: another deploy's cancel finished first, so the lock is free. Ends without failing so the parent goes back to Start. A standalone cancel with nothing to cancel still fails through Report.",
+      "Type": "Pass",
+      "Parameters": {
+        "Status": "no_active_deploy",
+        "Reported": false
+      },
+      "End": true
+    },
+    "Superseded": {
+      "Comment": "Start lost the deploy lock to another run, which owns the cleanup now. Ends the way FinishCancel does in that case, in the shape the deploy's Choice reads. Nothing to report.",
+      "Type": "Pass",
+      "Parameters": {
+        "Status": "deploy_aborted",
+        "Error": [
+          "Deploy was cancelled due to a superseding deploy."
+        ],
+        "Reported": false
+      },
+      "End": true
     },
     "PauseForCoalesce": {
       "Comment": "The ALB rule configurations appear to be eventually consistent, this pause seems to be long enough to ensure that the ALB has stopped directing traffic to the ASG we're about to shut down.",
