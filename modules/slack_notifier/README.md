@@ -16,6 +16,6 @@ module "slack_notifier" {
 
 ## Deploy messages
 
-Messages come from deployomat's own events (see [Deploy events](../deployomat/README.md#deploy-events)). Pass `deploy_event = module.deployomat.deploy_event`; the default matches it. They name the AMI actually launched and, when it has a `BuildCommit` tag that looks like a sha, the short commit.
+Messages come from deployomat's own events (see [Deploy events](https://github.com/GoCarrot/terraform-aws-deployomat/blob/main/modules/deployomat/README.md#deploy-events)). Pass `deploy_event = module.deployomat.deploy_event`; the default matches it. They name the AMI actually launched and, when it has a `BuildCommit` tag that looks like a sha, the short commit.
 
 A run's ending always posts. `forward_phases` picks which other phases post, default `["started"]`; add `"progress"` for each step's line. A SkipNotifications deploy posts only failures, aborts and unknown endings.

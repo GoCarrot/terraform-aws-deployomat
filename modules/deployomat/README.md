@@ -101,7 +101,7 @@ A deploy may be cancelled by starting an execution of `cancel_sfn.arn`. The inpu
 
 ## Deploy events
 
-Deploys, undeploys and cancels put their own events on the default EventBridge bus. The `deploy_event` output has the source and detail-type. The detail is the [notification](../notification_log/README.md#notification), plus the `step` that put the event and its `status`.
+Deploys, undeploys and cancels put their own events on the default EventBridge bus. The `deploy_event` output has the source and detail-type. The detail is the [notification](https://github.com/GoCarrot/terraform-aws-deployomat/blob/main/modules/notification_log/README.md#notification), plus the `step` that put the event and its `status`.
 
 Phases by `kind`:
 

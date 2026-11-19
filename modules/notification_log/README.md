@@ -2,9 +2,9 @@
 
 Terraform module which writes a Teak deploy notification to a CloudWatch log group for each deploy, cancel and undeploy transition, and creates a read-only role for whatever reads them.
 
-It follows `slack_notifier`: the same EventBridge rule and a Lambda, which writes one JSON line (`teak.deploy.notification/1`) to its own log group instead of posting to Slack. Everything Step Functions-specific stays in `src/notification_event.rb`, so a reader only knows the notification.
+It follows `slack_notifier`: the same EventBridge rule on Step Functions execution status changes and a Lambda, which writes one JSON line (`teak.deploy.notification/1`) to its own log group instead of posting to Slack. Everything Step Functions-specific stays in `src/notification_event.rb`, so a reader only knows the notification.
 
-The rule also matches deployomat's own events (`deploy_event`, defaulting to the deployomat module's output), which are logged as they arrive; see [Deploy events](../deployomat/README.md#deploy-events). A run that ends `SUCCEEDED` with output status `fail` is logged as `failed`.
+The rule also matches deployomat's own events (`deploy_event`, defaulting to the deployomat module's output), which are logged as they arrive; see [Deploy events](https://github.com/GoCarrot/terraform-aws-deployomat/blob/main/modules/deployomat/README.md#deploy-events). A run that ends `SUCCEEDED` with output status `fail` is logged as `failed`.
 
 ## Usage
 
