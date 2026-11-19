@@ -2,11 +2,9 @@
 
 Terraform module which writes a Teak deploy notification to a CloudWatch log group for each deploy, cancel and undeploy transition, and creates a read-only role for whatever reads them.
 
-It follows `slack_notifier`: the same EventBridge rule on Step Functions execution status changes, and a Lambda. The Lambda writes one JSON line (`teak.deploy.notification/1`) to its own log group instead of posting to Slack. Everything Step Functions-specific stays in `src/notification_event.rb`, so a reader only knows the notification.
+It follows `slack_notifier`: the same EventBridge rule and a Lambda, which writes one JSON line (`teak.deploy.notification/1`) to its own log group instead of posting to Slack. Everything Step Functions-specific stays in `src/notification_event.rb`, so a reader only knows the notification.
 
-A cancel that a deploy or undeploy started (a concurrent-deploy cancel, a rollback) is not logged; its parent reports. A run that ends `SUCCEEDED` with output status `fail` is logged as `failed`.
-
-Deploys, cancels and undeploys are reported by deployomat itself (see "Deploy events" in the deployomat module README). The rule also matches those events (`deploy_event`, defaulting to the deployomat module's `deploy_event` output), and the Lambda logs their detail as it arrives. A run's status events are only a backstop: `RUNNING`, a `SUCCEEDED` run marked `Reported`, and a `FAILED` run with error `Deployomat.Reported` are skipped, and anything else (a timeout, a console stop, a crash, a finished event that didn't land) is logged from the status event. Release this module with a deployomat that puts these events, or deploys, cancels and undeploys lose their started lines.
+The rule also matches deployomat's own events (`deploy_event`, defaulting to the deployomat module's output), which are logged as they arrive; see [Deploy events](../deployomat/README.md#deploy-events). A run that ends `SUCCEEDED` with output status `fail` is logged as `failed`.
 
 ## Usage
 
@@ -49,6 +47,6 @@ The log group also holds the Lambda's own START/END/REPORT lines, hence the filt
  "ami_tags":{"BuildCommit":"09c4f525..."}}
 ```
 
-A deploy's notification comes from deployomat's own event and adds `ami_tags` (every tag on the AMI, `{}` if none could be read) and, when the deploy was started with a `$` command, `ami_requested`. `ami` is then the AMI actually launched. Its `event_id` is `<execution>/<phase>`, the same on a retried put.
+Deployomat's own events add `ami_tags` (every tag on the AMI, `{}` if none could be read) and, when a deploy was started with a `$` command, `ami_requested`; `ami` is then the AMI actually launched. Cancels and undeploys have no AMI: `ami` is null. `event_id` is `<execution>/<phase>`, the same on a retried put, and `<execution>/progress/<hash of progress>` for `progress`.
 
-`kind` is `deploy`, `cancel` or `undeploy`. `phase` is `started`, `completed`, `failed`, `aborted` or `unknown`. `skip_notifications` mirrors `DeployConfig.SkipNotifications`; it is passed through, not acted on.
+`kind` is `deploy`, `cancel` or `undeploy`. `phase` is `started`, `progress`, `completed`, `failed`, `aborted` or `unknown`. `skip_notifications` mirrors `DeployConfig.SkipNotifications`; it is passed through, not acted on.

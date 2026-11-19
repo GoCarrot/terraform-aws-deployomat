@@ -1,19 +1,19 @@
 ## 0.5.1
 
+UPGRADE NOTES:
+
+* Release `deployomat`, `notification_log` and `slack_notifier` from this version together, or you lose started lines for cancels and undeploys or get them twice.
+
 ENHANCEMENTS:
 
-* Undeploys and top-level cancels put their own events the way a deploy does (`kind` `undeploy` or `cancel`, no AMI): `started` once the work begins, then `completed` or `failed` from the step that ends the run, with `"Reported": true` in the output (or the error `Deployomat.Reported` for a `Report` task's ending). A cancel that a deploy or undeploy started puts nothing. The cancel and undeploy state machines gain a `Report` step for an ending no Lambda decided, and their steps now get the run's `ExecutionArn`.
-* `notification_log` and `slack_notifier` now take cancels and undeploys from deployomat's own events too (`kind` is `cancel` or `undeploy`), with the same backstop as deploys: a run's status events are skipped when deployomat reported it, and still reported for a timeout, a console stop, a crash, or a finished event that didn't land. Slack no longer posts a line for a cancel that a deploy or undeploy started (a rollback, a concurrent-deploy cancel); its parent reports, as `notification_log` already did. The message text is unchanged.
-* `slack_notifier` takes `forward_phases`, the deploy event phases besides a run's ending it posts (default `["started"]`; add `"progress"` for step lines, which 0.5.0 always skipped). Endings always post, and an `unknown` ending reads "Ended with an unrecognised result" instead of "Unknown result unknown".
-* More steps put `progress` events: CheckHealthy once enough instances are healthy ("3 instances healthy (needed 2)"), Coalesce once it has taken the old ASG off the listener rules, and Bake as it starts ("Baking for 600s"; none for a zero bake). Slack posts them only with `"progress"` in `forward_phases`.
+* Undeploys and cancels put their own events the way a deploy does (`kind` `undeploy` or `cancel`). A cancel that a deploy or undeploy started puts nothing. The cancel and undeploy state machines gain a `Report` step.
+* `notification_log` and `slack_notifier` report cancels and undeploys from those events, with the same status-event backstop as deploys. Slack no longer posts a line for a cancel that a deploy or undeploy started. Message text is unchanged.
+* `slack_notifier` takes `forward_phases` (default `["started"]`; add `"progress"` for step lines). An `unknown` ending reads "Ended with an unrecognised result".
+* CheckHealthy, Coalesce and Bake put `progress` events. Slack posts them only with `"progress"` in `forward_phases`.
 
 BUG FIXES:
 
-* `slack_notifier` raises when Slack answers a 200 with `ok: false` (`not_in_channel`, `invalid_auth`), so the failure shows in the Lambda's errors instead of passing as a post.
-
-UPGRADE NOTES:
-
-* Release `deployomat`, `notification_log` and `slack_notifier` from this version together. A new reader beside a 0.5.0 deployomat drops every cancel's and undeploy's started line, since the reader skips `RUNNING` and that deployomat doesn't put its own. A new deployomat beside an old reader posts each cancel's and undeploy's started line twice.
+* `slack_notifier` raises when Slack answers 200 with `ok: false`, so the failure shows in the Lambda's errors.
 
 ## 0.5.0
 
