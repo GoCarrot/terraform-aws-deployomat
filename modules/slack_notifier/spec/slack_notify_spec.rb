@@ -2,6 +2,7 @@
 
 require_relative 'spec_helper'
 require_relative '../src/slack_notify'
+require_relative '../../deployomat/src/deploy_event'
 
 RSpec.describe SlackNotify do
   describe '.notification_for_event' do
@@ -18,26 +19,6 @@ RSpec.describe SlackNotify do
           'status' => 'RUNNING'
         }
       }
-    end
-
-    context 'when deployment starts' do
-      it 'returns message with new format: "Deploy X to Y: Started"' do
-        result = described_class.notification_for_event(base_event)
-
-        expect(result[:text]).to match(/^Deploy test-service to production: Started/)
-        expect(result[:text]).to include('ami-12345678')
-        expect(result[:text]).to include('test-123')
-      end
-
-      it 'returns nil when SkipNotifications is true' do
-        event = base_event.dup
-        input = JSON.parse(event['detail']['input'])
-        input['DeployConfig'] = { 'SkipNotifications' => true }
-        event['detail']['input'] = input.to_json
-
-        result = described_class.notification_for_event(event)
-        expect(result[:text]).to be_nil
-      end
     end
 
     context 'when deployment completes successfully' do
@@ -184,6 +165,53 @@ RSpec.describe SlackNotify do
     end
   end
 
+  describe '.notification_for_deploy_event' do
+    let(:note) do
+      detail = Deployomat::DeployEvent.detail(
+        kind: 'deploy', phase: 'started', service: 'audience', account: 'workload-prod',
+        execution_arn: 'arn:aws:states:us-east-1:1:execution:deploy:run-1', ami: 'ami-0abc',
+        ami_tags: { 'BuildCommit' => '09c4f525c0ffee' }
+      )
+      JSON.parse(JSON.generate(detail))
+    end
+
+    def text(overrides = {})
+      described_class.notification_for_deploy_event(note.merge(overrides))[:text]
+    end
+
+    it 'reads like the status-event message, with the short commit after the AMI' do
+      expect(text).to start_with('Deploy audience to workload-prod: Started (AMI <')
+      expect(text).to include('|ami-0abc>, commit 09c4f52, Execution <')
+      expect(text).to end_with('|run-1>)')
+    end
+
+    it 'leaves the commit out when the tag is not a sha' do
+      expect(text('ami_tags' => { 'BuildCommit' => 'in-dev' })).not_to include('commit')
+      expect(text('ami_tags' => {})).not_to include('commit')
+    end
+
+    it 'names the requested AMI when no AMI was resolved' do
+      expect(text('ami' => nil, 'ami_requested' => '$LatestMinus:1',
+                  'ami_tags' => {})).to include('(AMI $LatestMinus:1, Execution')
+    end
+
+    it 'adds the errors to a failure or abort' do
+      expect(text('phase' => 'failed',
+                  'errors' => %w[one two])).to include(': Failed (AMI').and end_with("\n\none\ntwo")
+      expect(text('phase' => 'aborted', 'errors' => ['superseded'])).to end_with("\n\nsuperseded")
+    end
+
+    it 'skips Rollout\'s progress events' do
+      expect(text('phase' => 'progress', 'status' => 'wait', 'progress' => 40)).to be_nil
+    end
+
+    it 'skips a start or completion with SkipNotifications, but never a failure' do
+      expect(text('skip_notifications' => true)).to be_nil
+      expect(text('skip_notifications' => true, 'phase' => 'completed')).to be_nil
+      expect(text('skip_notifications' => true, 'phase' => 'failed')).to include('Failed')
+    end
+  end
+
   describe '.handler' do
     let(:deploy_event) do
       {
@@ -206,9 +234,77 @@ RSpec.describe SlackNotify do
         .to_return(status: 200, body: { ok: true }.to_json)
     end
 
-    it 'handles deploy state machine events' do
-      result = described_class.handler(event: deploy_event, context: {})
-      expect(result).to include('Successfully notified')
+    it 'reports deploy status events deployomat did not: a timeout, an unmarked failure' do
+      [{ 'status' => 'TIMED_OUT' }, { 'status' => 'FAILED', 'error' => 'States.Runtime' }].each do |change|
+        event = deploy_event.merge('detail' => deploy_event['detail'].merge(change))
+        expect(described_class.handler(event: event, context: {})).to include('Successfully notified')
+      end
+    end
+
+    it 'skips deploy status events deployomat reported, without calling Slack' do
+      reported = [
+        deploy_event,
+        deploy_event.merge('detail' => deploy_event['detail'].merge(
+          'status' => 'SUCCEEDED', 'output' => { 'Status' => 'complete', 'Reported' => true }.to_json
+        )),
+        deploy_event.merge('detail' => deploy_event['detail'].merge('status' => 'FAILED',
+                                                                    'error' => 'Deployomat.Reported'))
+      ]
+
+      reported.each do |event|
+        expect(described_class.handler(event: event,
+                                       context: {})).to eq('Skipping notification: deployomat reported it.')
+      end
+      expect(a_request(:post, 'https://slack.com/api/chat.postMessage')).not_to have_been_made
+    end
+
+    it 'posts nothing for a deploy-source event that is not a deploy notification' do
+      %w[cancel undeploy].each do |kind|
+        detail = Deployomat::DeployEvent.detail(
+          kind: kind, phase: 'started', service: 'api-service', account: 'production',
+          execution_arn: "arn:aws:states:us-east-1:123456789012:execution:#{kind}:test-123"
+        )
+        event = { 'source' => 'omat.deployomat', 'resources' => [detail['execution_arn']],
+                  'detail' => JSON.parse(JSON.generate(detail)) }
+        expect(described_class.handler(event: event,
+                                       context: {})).to eq('Skipping notification: not a deploy notification.')
+      end
+      odd = { 'source' => 'omat.deployomat', 'resources' => ['x'],
+              'detail' => { 'schema' => 'other/2', 'kind' => 'deploy' } }
+      expect(described_class.handler(event: odd,
+                                     context: {})).to eq('Skipping notification: not a deploy notification.')
+      expect(a_request(:post, 'https://slack.com/api/chat.postMessage')).not_to have_been_made
+    end
+
+    it 'reports an aborted deploy from the backstop, whose Error is a string' do
+      event = deploy_event.merge('detail' => deploy_event['detail'].merge(
+        'status' => 'SUCCEEDED',
+        'output' => { 'Status' => 'deploy_aborted',
+                      'Error' => 'Deploy was cancelled due to a superseding deploy.' }.to_json
+      ))
+      expect(described_class.handler(event: event, context: {})).to include('Successfully notified')
+      expect(a_request(:post, 'https://slack.com/api/chat.postMessage')
+        .with { |req| JSON.parse(req.body)['text'].end_with?("\n\nDeploy was cancelled due to a superseding deploy.") })
+        .to have_been_made
+    end
+
+    it 'treats output that is JSON but not an object as unreported' do
+      event = deploy_event.merge('detail' => deploy_event['detail'].merge('status' => 'SUCCEEDED', 'output' => '[1]'))
+      expect(described_class.reported_by_deployomat?(event)).to be(false)
+    end
+
+    it "posts deployomat's own deploy event" do
+      detail = Deployomat::DeployEvent.detail(
+        kind: 'deploy', phase: 'completed', service: 'api-service', account: 'production',
+        execution_arn: 'arn:aws:states:us-east-1:123456789012:execution:deploy:test-123', ami: 'ami-0abc'
+      )
+      event = { 'source' => 'omat.deployomat', 'detail-type' => 'Deployomat Deploy',
+                'resources' => [detail['execution_arn']], 'detail' => JSON.parse(JSON.generate(detail)) }
+
+      expect(described_class.handler(event: event, context: {})).to include('Successfully notified')
+      expect(a_request(:post, 'https://slack.com/api/chat.postMessage')
+        .with { |req| JSON.parse(req.body)['text'].start_with?('Deploy api-service to production: Completed') })
+        .to have_been_made
     end
 
     it 'handles unknown state machine gracefully' do

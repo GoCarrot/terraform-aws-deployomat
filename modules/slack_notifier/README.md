@@ -13,3 +13,7 @@ module "slack_notifier" {
   slack_notification_channel = "deploy-status"
 }
 ```
+
+## Deploy messages
+
+Deploy messages come from deployomat's own deploy events (see "Deploy events" in the deployomat module README), so they name the AMI actually launched and, when the AMI has a `BuildCommit` tag that looks like a sha, the short commit. Pass `deploy_event = module.deployomat.deploy_event`; the default matches it. A deploy's Step Functions status events are only a backstop for what deployomat didn't report: a timeout, a console stop, a crash, or a finished event that didn't land. Deploy-source events that aren't a deploy notification are ignored. Cancel and undeploy messages still come from status events. Release this module with a deployomat that puts deploy events, or deploys lose their Started messages.

@@ -17,10 +17,13 @@
 require 'json'
 require_relative 'notification_event'
 
-# Lambda handler. Turns each Step Functions execution status change that the module's rule
-# matches into one Teak deploy notification and writes it to stdout, which Lambda sends to
-# this function's log group. The dispatcher reads that log group. Uses $stdout.puts, not a
-# Logger, so the log line is the bare JSON.
+# Lambda handler. Writes one Teak deploy notification per event the module's rule matches to
+# stdout, which Lambda sends to this function's log group. The dispatcher reads that log
+# group. Uses $stdout.puts, not a Logger, so the log line is the bare JSON.
+#
+# Two kinds of event arrive. Deployomat's own deploy events already are notifications, and
+# are written as they are. Step Functions execution status changes are turned into one,
+# unless deployomat already reported that run.
 module NotificationLog
   # Which of the three state machines the execution belongs to.
   def self.kind_for(event)
@@ -34,15 +37,33 @@ module NotificationLog
   end
 
   def self.handler(event:, context:)
+    return log_deploy_event(event) if event['source'] == ENV.fetch('DEPLOY_EVENT_SOURCE', 'omat.deployomat')
+
     kind = kind_for(event)
     if kind.nil?
       puts event
       return "Unknown state machine trigger #{event.dig('resources', 0)}"
     end
 
+    return 'Skipping notification: deployomat reported it.' if NotificationEvent.reported_by_deployomat?(event, kind)
+
     notification = NotificationEvent.build(event, kind)
     return 'Skipping notification.' if notification.nil?
 
+    log(notification)
+  end
+
+  def self.log_deploy_event(event)
+    notification = event['detail']
+    unless notification.is_a?(Hash) && notification['schema'] == NotificationEvent::SCHEMA
+      puts event
+      return 'Unknown deploy event'
+    end
+
+    log(notification)
+  end
+
+  def self.log(notification)
     $stdout.puts(JSON.generate(notification))
     "Logged #{notification['phase']} for #{notification['service']}"
   end

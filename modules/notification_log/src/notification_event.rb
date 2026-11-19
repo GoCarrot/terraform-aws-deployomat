@@ -35,6 +35,9 @@ module NotificationEvent
   # a deploy or undeploy kicks off for a concurrent deploy or a rollback.
   PARENT_KEY = 'AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID'
 
+  # The error of a deploy run that failed after deployomat reported it (deploy.json FailReported).
+  REPORTED_ERROR = 'Deployomat.Reported'
+
   OUTPUT_PHASES = {
     'complete' => 'completed',
     'deploy_aborted' => 'aborted',
@@ -66,6 +69,19 @@ module NotificationEvent
       'errors' => errors,
       'skip_notifications' => input.dig('DeployConfig', 'SkipNotifications') == true
     }
+  end
+
+  # True when deployomat already reported this deploy run itself (see its README, "Deploy events").
+  def self.reported_by_deployomat?(event, kind)
+    return false unless kind == 'deploy'
+
+    detail = event.fetch('detail')
+    case detail['status']
+    when 'RUNNING' then true
+    when 'SUCCEEDED' then parse(detail['output'])['Reported'] == true
+    when 'FAILED' then detail['error'] == REPORTED_ERROR
+    else false
+    end
   end
 
   def self.phase_and_errors(detail)
