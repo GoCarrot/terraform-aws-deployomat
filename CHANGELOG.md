@@ -3,6 +3,7 @@
 ENHANCEMENTS:
 
 * `slack_notifier` takes `forward_phases`, the deploy event phases besides a run's ending it posts (default `["started"]`; add `"progress"` for step lines, which 0.5.0 always skipped). Endings always post, and an `unknown` ending reads "Ended with an unrecognised result" instead of "Unknown result unknown".
+* More steps put `progress` events: CheckHealthy once enough instances are healthy ("3 instances healthy (needed 2)"), Coalesce once it has taken the old ASG off the listener rules, and Bake as it starts ("Baking for 600s"; none for a zero bake). Slack posts them only with `"progress"` in `forward_phases`.
 
 BUG FIXES:
 
