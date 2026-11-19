@@ -24,18 +24,23 @@ require 'json'
 module LambdaFunctions
   class Handler
     def self.cancel(event:, context:)
+      if event['Step'] == 'Report'
+        return report_failure('cancel', event, cancel_failure(event['AllInput']))
+      end
+
       args = {
         account_canonical_slug: event['AccountCanonicalSlug'], service_name: event['ServiceName'],
         deploy_id: "cancel-#{event['DeployId']}"
       }
       config = Deployomat::Config.new(**args)
+      reporter = Deployomat::DeployEvent::Reporter.for_run(event, 'cancel')
       op =
         if event['Step'] == 'Start'
-          Deployomat::StartCancel.new(config)
+          Deployomat::StartCancel.new(config, reporter: reporter)
         else
-          Deployomat::FinishCancel.new(config)
+          Deployomat::FinishCancel.new(config, reporter: reporter)
         end
-      op.call
+      reported(op.call)
     end
 
     def self.deploy(event:, context:)
@@ -93,13 +98,43 @@ module LambdaFunctions
     end
 
     def self.undeploy(event:, context:)
+      if event['Step'] == 'Report'
+        status = event.dig('AllInput', 'StartResult', 'Status')
+        return report_failure('undeploy', event, "Unexpected result from Start: #{status.inspect}")
+      end
+
       args = {
         account_canonical_slug: event['AccountCanonicalSlug'], service_name: event['ServiceName'],
         deploy_id: "undeploy-#{event['DeployId']}"
       }
       config = Deployomat::Config.new(**args)
-      op = Deployomat::Undeploy.new(config, undeploy_config: event.dig('AllInput', 'UndeployConfig'))
-      op.call
+      reporter = Deployomat::DeployEvent::Reporter.for_run(event, 'undeploy')
+      op = Deployomat::Undeploy.new(config, undeploy_config: event.dig('AllInput', 'UndeployConfig'), reporter: reporter)
+      reported(op.call)
+    end
+
+    # The state machines' endings read Reported. A result that ends the run without a step reporting
+    # it ends unmarked, and the Step Functions status-event readers report it instead. Cancel's Start
+    # answers with a bare status, which nothing reads Reported from.
+    def self.reported(result)
+      return result unless result.is_a?(Hash)
+
+      result.key?(:Reported) ? result : result.merge(Reported: false)
+    end
+
+    def self.report_failure(kind, event, error)
+      Deployomat::DeployEvent::ReportFailure.call(
+        kind: kind, all_input: event['AllInput'], execution_arn: event['ExecutionArn'], error: error
+      )
+    end
+
+    # Why cancel.json reached its Report step: Start found no deploy to cancel, or answered something unexpected.
+    def self.cancel_failure(all_input)
+      input = all_input.is_a?(Hash) ? all_input : {}
+      start = input['StartResult']
+      return "No deployment of #{input['ServiceName']} in #{input['AccountCanonicalSlug']} active" if start == 'fail'
+
+      "Unexpected result from Start: #{start.inspect}"
     end
   end
 end

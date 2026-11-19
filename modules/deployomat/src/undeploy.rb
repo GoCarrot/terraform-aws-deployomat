@@ -24,9 +24,12 @@ module Deployomat
 
     def_delegators :@config, :account_name, :service_name, :prefix, :deploy_id, :params
 
-    def initialize(config, undeploy_config:)
+    CONCURRENT = 'A deploy is running concurrently, and this undeploy was configured to fail in such a case.'
+
+    def initialize(config, undeploy_config:, reporter:)
       undeploy_config = undeploy_config || {}
       @config = config
+      @reporter = reporter
 
       @on_concurrent_deploy = undeploy_config.fetch('OnConcurrentDeploy', DEFAULT_ON_CONCURRENT_DEPLOY)
     end
@@ -36,21 +39,27 @@ module Deployomat
       if production_asg_name.nil? || production_asg_name.empty?
         error = "No production ASG of #{service_name} in #{account_name} to undeploy, not deployed?"
         puts error
-        return { Status: :fail, Error: [error] }
+        return @reporter.failed(Status: :fail, Error: [error])
       end
 
       if !(@config.undeploying? || @config.undeployable?)
         error = "#{service_name} in #{account_name} cannot be undeployed. Do a new deploy with DeployConfig.AllowUndeploy set to true first."
         puts error
-        return { Status: :fail, Error: [error] }
+        return @reporter.failed(Status: :fail, Error: [error])
       end
 
       deploy_asg_name = @config.deploy_asg
       if deploy_asg_name && !deploy_asg_name.empty?
         puts "Deployment of #{service_name} in #{account_name} still in progress"
-        return { Status: :deploy_active, OnConcurrentDeploy: @on_concurrent_deploy }
+        result = { Status: :deploy_active, OnConcurrentDeploy: @on_concurrent_deploy }
+        # Anything but `fail` cancels the deploy and comes back here, so only `fail` ends the run.
+        return result unless @on_concurrent_deploy == 'fail'
+
+        return @reporter.failed(errors: [CONCURRENT], **result)
       end
 
+      # After the early returns above, so a run that comes back after cancelling a deploy reports it once.
+      @reporter.emit('started')
       puts "Asserting start of undeploy"
       @config.assert_start_undeploy
       puts "Undeploy operation asserted"
@@ -63,7 +72,7 @@ module Deployomat
       if !production_asg
         error = "Could not find production ASG #{production_asg_name}. Old entry?"
         puts error
-        return { Status: :fail, Error: [error] }
+        return @reporter.failed(Status: :fail, Error: [error])
       end
 
       listeners = begin
@@ -100,7 +109,7 @@ module Deployomat
       events = Events.new(@config)
       events.disable_automatic_undeploy
 
-      return { Status: :complete }
+      @reporter.completed(Status: :complete)
     end
   end
 end

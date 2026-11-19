@@ -22,8 +22,9 @@ module Deployomat
 
     def_delegators :@config, :account_name, :service_name, :prefix, :deploy_id, :params
 
-    def initialize(config)
+    def initialize(config, reporter:)
       @config = config
+      @reporter = reporter
     end
 
     def call
@@ -41,6 +42,8 @@ module Deployomat
       puts "Asserting start of cancel"
       @config.assert_start_cancel
       puts "Cancel operation asserted"
+      # A cancel that finds nothing to cancel returns before here, and cancel.json reports that ending.
+      @reporter.emit('started')
 
       asg = Asg.new(@config)
       deploy_asg = asg.get(deploy_asg_name)
@@ -119,8 +122,9 @@ module Deployomat
 
     def_delegators :@config, :account_name, :service_name, :prefix, :deploy_id, :params
 
-    def initialize(config)
+    def initialize(config, reporter:)
       @config = config
+      @reporter = reporter
     end
 
     def call
@@ -132,7 +136,7 @@ module Deployomat
       if deploy_asg_name.nil? || deploy_asg_name.empty?
         msg = "No deployment of #{service_name} in #{account_name} active"
         puts msg
-        return { Status: :fail, Error: [msg] }
+        return @reporter.failed(Status: :fail, Error: [msg])
       end
 
       production_asg = @config.production_asg
@@ -176,7 +180,7 @@ module Deployomat
         @config.set_production_asg('')
       end
 
-      return { Status: :complete }
+      @reporter.completed(Status: :complete)
     end
   end
 end

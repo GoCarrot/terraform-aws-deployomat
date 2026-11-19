@@ -3,6 +3,8 @@
 # Drives the Lambdas one Step at a time, the way state_machines/ do, against a stateful
 # fake of the account (deploy_world.rb).
 DEPLOY_EXECUTION_ARN = 'arn:aws:states:us-east-1:232340377988:execution:deploy:exec-1'
+CANCEL_EXECUTION_ARN = 'arn:aws:states:us-east-1:232340377988:execution:cancel:exec-c'
+UNDEPLOY_EXECUTION_ARN = 'arn:aws:states:us-east-1:232340377988:execution:undeploy:exec-u'
 
 RSpec.shared_context 'with deploy world' do
   include_context 'with stubbed aws'
