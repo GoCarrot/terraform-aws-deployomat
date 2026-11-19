@@ -18,7 +18,7 @@ RSpec.describe LambdaFunctions::Handler, '.deploy step events' do
     step('Start', 'AmiId' => ami_id, 'AllInput' => { 'DeployConfig' => config }, 'ExecutionArn' => execution_arn)
   end
 
-  def finished_events
+  def events_after_started
     world.deploy_events.reject { |e| e['phase'] == 'started' }
   end
 
@@ -35,7 +35,7 @@ RSpec.describe LambdaFunctions::Handler, '.deploy step events' do
         'errors' => ["Could not load #{service}-template. Is ServiceName correct?"],
         'step' => 'Start', 'status' => 'fail'
       }
-      expect(finished_events).to contain_exactly(include(expected))
+      expect(events_after_started).to contain_exactly(include(expected))
     end
 
     it 'reports an undeploy in progress' do
@@ -43,7 +43,7 @@ RSpec.describe LambdaFunctions::Handler, '.deploy step events' do
       world.item.merge!('deploy_id' => 'undeploy-other', 'undeploy_state' => 'undeploying')
 
       expect(start_run).to include(Status: :undeploying, Reported: true)
-      expect(finished_events.first)
+      expect(events_after_started.first)
         .to include('phase' => 'failed', 'status' => 'undeploying',
                     'errors' => ['Undeploy of thezoo in Dev in progress.'])
     end
@@ -56,7 +56,7 @@ RSpec.describe LambdaFunctions::Handler, '.deploy step events' do
       expect(world.deploy_events).to be_empty
 
       expect(start_run(config: deploy_config.merge('OnConcurrentDeploy' => 'fail'))).to include(Reported: true)
-      expect(finished_events).to contain_exactly(
+      expect(events_after_started).to contain_exactly(
         include('phase' => 'failed', 'status' => 'deploy_active', 'errors' => [Deployomat::StartDeploy::CONCURRENT])
       )
     end
@@ -97,7 +97,7 @@ RSpec.describe LambdaFunctions::Handler, '.deploy step events' do
         'ami_tags' => { 'BuildCommit' => '09c4f525' },
         'errors' => ['Service did not become healthy. Have 0 of 3 instances.'], 'step' => 'CheckHealthy'
       }
-      expect(finished_events).to contain_exactly(include(expected))
+      expect(events_after_started).to contain_exactly(include(expected))
     end
 
     it 'reports a superseded Coalesce as aborted' do
@@ -106,7 +106,7 @@ RSpec.describe LambdaFunctions::Handler, '.deploy step events' do
 
       expect(step('Coalesce', from_start.merge('TargetGroupArn' => new_tg_arn, 'RuleIds' => rule_ids)))
         .to eq(Status: :deploy_aborted, Reported: true)
-      expect(finished_events).to contain_exactly(
+      expect(events_after_started).to contain_exactly(
         include('phase' => 'aborted', 'step' => 'Coalesce', 'errors' => [Deployomat::DeployEvent::Reporter::CANCELLED])
       )
     end
@@ -118,15 +118,15 @@ RSpec.describe LambdaFunctions::Handler, '.deploy step events' do
       expect(step('Rollout', rollout)).to eq(Status: :wait, Wait: 1, Progress: 60, Reported: false)
       expect(step('Rollout', rollout.merge('StepResult' => { 'Progress' => 60 })))
         .to eq(Status: :complete, Reported: false)
-      expect(finished_events.map { |e| e.values_at('step', 'status', 'progress', 'ami') }).to eq(
+      expect(events_after_started.map { |e| e.values_at('step', 'status', 'progress', 'ami') }).to eq(
         [['Rollout', 'wait', 'Shifted 60% of traffic to the new ASG', ami],
          ['Rollout', 'complete', 'Shifted 100% of traffic to the new ASG', ami]]
       )
-      expect(finished_events.map { |e| e['event_id'] }.uniq.length).to eq(2)
+      expect(events_after_started.map { |e| e['event_id'] }.uniq.length).to eq(2)
     end
 
     def progress_lines
-      finished_events.map { |e| e.values_at('phase', 'step', 'status', 'progress') }
+      events_after_started.map { |e| e.values_at('phase', 'step', 'status', 'progress') }
     end
 
     it 'puts a progress event when CheckHealthy has enough healthy instances, and none while waiting' do
@@ -137,13 +137,13 @@ RSpec.describe LambdaFunctions::Handler, '.deploy step events' do
       expect(step('CheckHealthy', event)).to include(Status: :wait, Reported: false)
       world.healthy[new_tg_arn] = 3
       expect(step('CheckHealthy', event)).to eq(Status: :complete, Reported: false)
-      expect(progress_lines).to eq([['progress', 'CheckHealthy', 'complete', '3 of 2 instances healthy']])
+      expect(progress_lines).to eq([['progress', 'CheckHealthy', 'complete', '3 instances healthy (needed 2)']])
     end
 
     it 'puts a progress event when Coalesce has moved the traffic' do
       expect(step('Coalesce', from_start.merge('TargetGroupArn' => new_tg_arn, 'RuleIds' => started[:RuleIds])))
         .to eq(Status: :complete, Reported: false)
-      expect(progress_lines).to eq([['progress', 'Coalesce', 'complete', 'Moved all traffic to the new ASG']])
+      expect(progress_lines).to eq([['progress', 'Coalesce', 'complete', 'Took the old ASG off the listener rules']])
     end
 
     it 'puts one progress event as Bake starts, and none when it ends' do
@@ -176,7 +176,7 @@ RSpec.describe LambdaFunctions::Handler, '.deploy step events' do
 
       expect(step('Bake', from_start.merge('BakeTime' => 0, 'StepResult' => { 'RemainingTime' => 0 })))
         .to eq(Status: :complete, Reported: false)
-      expect(finished_events).to be_empty
+      expect(events_after_started).to be_empty
     end
 
     it 'reports Finish as completed, after everything Finish does' do
@@ -184,7 +184,7 @@ RSpec.describe LambdaFunctions::Handler, '.deploy step events' do
       result = step('Finish', from_start.merge('AllowUndeploy' => true))
 
       expect(result).to eq(Status: :complete, Reported: true)
-      expect(finished_events).to contain_exactly(include('phase' => 'completed', 'ami' => ami))
+      expect(events_after_started).to contain_exactly(include('phase' => 'completed', 'ami' => ami))
       expect(world.requests.last.first).to eq(:put_events)
     end
 
@@ -193,7 +193,7 @@ RSpec.describe LambdaFunctions::Handler, '.deploy step events' do
       world.fail_with(:modify_launch_template, 'ValidationError')
 
       expect { step('Finish', from_start.merge('AllowUndeploy' => true)) }.to raise_error(Aws::EC2::Errors::ValidationError)
-      expect(finished_events).to be_empty
+      expect(events_after_started).to be_empty
     end
   end
 
@@ -204,7 +204,7 @@ RSpec.describe LambdaFunctions::Handler, '.deploy step events' do
 
     expect(step('Finish', 'AllowUndeploy' => true, 'ExecutionArn' => nil))
       .to eq(Status: :deploy_aborted, Reported: false)
-    expect(finished_events).to be_empty
+    expect(events_after_started).to be_empty
   end
 
   it 'is not Reported when EventBridge rejects the event' do

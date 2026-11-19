@@ -403,7 +403,7 @@ module Deployomat
       puts "Waiting for #{min_healthy} healthy instances, have #{healthy_count}"
 
       if healthy_count >= min_healthy
-        @reporter.emit('progress', status: :complete, progress: "#{healthy_count} of #{min_healthy} instances healthy")
+        @reporter.emit('progress', status: :complete, progress: "#{healthy_count} instances healthy (needed #{min_healthy})")
         { Status: :complete }
       elsif remaining_time >= seconds_to_wait
         { Status: :wait, Wait: seconds_to_wait, RemainingTime: remaining_time - seconds_to_wait }
@@ -489,7 +489,7 @@ module Deployomat
         elbv2.coalesce(rule, target_group_arn)
         puts "Coalesced traffic on #{rule.rule_arn}"
       end
-      @reporter.emit('progress', status: :complete, progress: 'Moved all traffic to the new ASG')
+      @reporter.emit('progress', status: :complete, progress: 'Took the old ASG off the listener rules')
       { Status: :complete }
     end
   end
