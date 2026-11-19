@@ -17,6 +17,8 @@
 require_relative 'lib'
 
 module Deployomat
+  LOST_LOCK = "Another run took over the deploy lock; this cancel is superseded."
+
   class StartCancel
     extend Forwardable
 
@@ -27,7 +29,18 @@ module Deployomat
       @reporter = reporter
     end
 
+    # A conditional write failing means another run took the deploy lock row over, usually the
+    # cancel of a newer deploy. That run owns the cleanup now, so this one is superseded.
     def call
+      cancel
+    rescue Aws::DynamoDB::Errors::ConditionalCheckFailedException
+      puts LOST_LOCK
+      :superseded
+    end
+
+  private
+
+    def cancel
       deploy_asg_name = @config.deploy_asg
       if deploy_asg_name.nil? || deploy_asg_name.empty?
         puts "No deployment of #{service_name} in #{account_name} active"
@@ -69,8 +82,6 @@ module Deployomat
         return :success
       end
     end
-
-  private
 
     def reset_listeners(listeners, production_asg, deploy_asg)
       elbv2 = ElbV2.new(@config)
@@ -128,6 +139,16 @@ module Deployomat
     end
 
     def call
+      finish
+    rescue Aws::DynamoDB::Errors::ConditionalCheckFailedException
+      puts LOST_LOCK
+      # Same ending as a deploy cancelled by a superseding deploy; nothing to report for it.
+      { Status: :deploy_aborted, Error: [DeployEvent::Reporter::CANCELLED], Reported: false }
+    end
+
+  private
+
+    def finish
       puts "Asserting active cancel"
       @config.assert_active
       puts "Asserted active"
