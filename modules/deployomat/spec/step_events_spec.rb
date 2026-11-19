@@ -125,6 +125,52 @@ RSpec.describe LambdaFunctions::Handler, '.deploy step events' do
       expect(finished_events.map { |e| e['event_id'] }.uniq.length).to eq(2)
     end
 
+    def progress_lines
+      finished_events.map { |e| e.values_at('phase', 'step', 'status', 'progress') }
+    end
+
+    it 'puts a progress event when CheckHealthy has enough healthy instances, and none while waiting' do
+      started
+      event = from_start.merge('MinHealthy' => 2, 'TargetGroupArn' => new_tg_arn, 'WaitTime' => 60)
+
+      world.healthy[new_tg_arn] = 1
+      expect(step('CheckHealthy', event)).to include(Status: :wait, Reported: false)
+      world.healthy[new_tg_arn] = 3
+      expect(step('CheckHealthy', event)).to eq(Status: :complete, Reported: false)
+      expect(progress_lines).to eq([['progress', 'CheckHealthy', 'complete', '3 of 2 instances healthy']])
+    end
+
+    it 'puts a progress event when Coalesce has moved the traffic' do
+      expect(step('Coalesce', from_start.merge('TargetGroupArn' => new_tg_arn, 'RuleIds' => started[:RuleIds])))
+        .to eq(Status: :complete, Reported: false)
+      expect(progress_lines).to eq([['progress', 'Coalesce', 'complete', 'Moved all traffic to the new ASG']])
+    end
+
+    it 'puts one progress event as Bake starts, and none when it ends' do
+      started
+      bake = from_start.merge('BakeTime' => 600)
+
+      expect(step('Bake', bake)).to eq(Status: :wait, Wait: 600, RemainingTime: 0, Reported: false)
+      expect(step('Bake',
+                  bake.merge('StepResult' => { 'RemainingTime' => 0 }))).to eq(Status: :complete, Reported: false)
+      expect(progress_lines).to eq([['progress', 'Bake', 'wait', 'Baking for 600s']])
+    end
+
+    it 'returns the same step results when the progress events do not land' do
+      started
+      world.fail_with(:put_events, 'AccessDeniedException')
+      healthy = from_start.merge('MinHealthy' => 1, 'TargetGroupArn' => new_tg_arn, 'WaitTime' => 0)
+      world.healthy[new_tg_arn] = 1
+
+      expect do
+        expect(step('CheckHealthy', healthy)).to eq(Status: :complete, Reported: false)
+        expect(step('Bake', from_start.merge('BakeTime' => 600)))
+          .to eq(Status: :wait, Wait: 600, RemainingTime: 0, Reported: false)
+        expect(step('Coalesce', from_start.merge('TargetGroupArn' => new_tg_arn, 'RuleIds' => started[:RuleIds])))
+          .to eq(Status: :complete, Reported: false)
+      end.to output(/put_events/).to_stderr
+    end
+
     it 'leaves a result no step reported unmarked, so the status-event readers report it' do
       started
 

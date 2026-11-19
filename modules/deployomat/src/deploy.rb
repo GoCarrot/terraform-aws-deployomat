@@ -403,6 +403,7 @@ module Deployomat
       puts "Waiting for #{min_healthy} healthy instances, have #{healthy_count}"
 
       if healthy_count >= min_healthy
+        @reporter.emit('progress', status: :complete, progress: "#{healthy_count} of #{min_healthy} instances healthy")
         { Status: :complete }
       elsif remaining_time >= seconds_to_wait
         { Status: :wait, Wait: seconds_to_wait, RemainingTime: remaining_time - seconds_to_wait }
@@ -488,6 +489,7 @@ module Deployomat
         elbv2.coalesce(rule, target_group_arn)
         puts "Coalesced traffic on #{rule.rule_arn}"
       end
+      @reporter.emit('progress', status: :complete, progress: 'Moved all traffic to the new ASG')
       { Status: :complete }
     end
   end
@@ -499,8 +501,10 @@ module Deployomat
 
     attr_reader :rule_ids, :target_group_arn, :bake_time, :remaining_time
 
-    def initialize(config, rule_ids:, target_group_arn:, bake_time:, remaining_time:)
+    def initialize(config, rule_ids:, target_group_arn:, bake_time:, remaining_time:, reporter:)
       @config = config
+      @reporter = reporter
+      @first_call = remaining_time.nil?
       @rule_ids = rule_ids
       @target_group_arn = target_group_arn
       @bake_time = bake_time
@@ -511,6 +515,7 @@ module Deployomat
       if remaining_time <= 0
         { Status: :complete }
       else
+        @reporter.emit('progress', status: :wait, progress: "Baking for #{bake_time}s") if @first_call
         { Status: :wait, Wait: @bake_time, RemainingTime: 0 }
       end
     end
