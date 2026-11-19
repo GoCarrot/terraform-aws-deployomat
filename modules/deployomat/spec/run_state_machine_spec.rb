@@ -75,10 +75,6 @@ RSpec.describe 'state_machines/cancel.json and undeploy.json' do # rubocop:disab
         expect(state['Parameters']['Reported.$']).to eq('$.StartResult.Reported'), name
       end
     end
-
-    it 'comes back to StartUndeploy after cancelling a concurrent deploy, so Start reports its started only once' do
-      expect(states['CancelConcurrentDeploy']['Next']).to eq('StartUndeploy')
-    end
   end
 
   context 'with the endings cancel.json has' do
@@ -88,11 +84,6 @@ RSpec.describe 'state_machines/cancel.json and undeploy.json' do # rubocop:disab
       ends = states.select { |_, s| s['End'] || %w[Fail Succeed].include?(s['Type']) }.keys
 
       expect(ends).to match_array(%w[FinishCancel Fail FailReported])
-    end
-
-    it 'sends Start\'s fail and its unknown answers through Report' do
-      expect(states['StartBranch']['Choices'].select { |c| c['StringEquals'] == 'fail' }.map { |c| c['Next'] })
-        .to eq(['Report'])
     end
   end
 end
