@@ -134,8 +134,43 @@
           ]
         }
       ],
-      "ResultPath": null,
-      "Next": "StartDeploy"
+      "ResultSelector": {
+        "Output.$": "$.Output"
+      },
+      "ResultPath": "$.Cancel",
+      "Next": "CancelBranch"
+    },
+    "CancelBranch": {
+      "Comment": "The cancel lost the deploy lock to another run. That run owns the cleanup, so this deploy is superseded; going back to Start would fight it for the lock.",
+      "Type": "Choice",
+      "Choices": [
+        {
+          "And": [
+            {
+              "Variable": "$.Cancel.Output.Status",
+              "IsPresent": true
+            },
+            {
+              "Variable": "$.Cancel.Output.Status",
+              "StringEquals": "deploy_aborted"
+            }
+          ],
+          "Next": "SupersededDuringCancel"
+        }
+      ],
+      "Default": "StartDeploy"
+    },
+    "SupersededDuringCancel": {
+      "Comment": "Nothing Reported yet, so this goes through Report, which puts the aborted event.",
+      "Type": "Pass",
+      "Parameters": {
+        "Status": "deploy_aborted",
+        "Error": [
+          "Deploy was cancelled due to a superseding deploy."
+        ]
+      },
+      "ResultPath": "$.Outcome",
+      "Next": "Report"
     },
     "Rollback": {
       "Type": "Task",

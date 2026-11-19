@@ -1,3 +1,9 @@
+## Unreleased
+
+BUG FIXES:
+
+* A deploy that loses the deploy lock to another deploy's cancel ends `aborted` ("cancelled due to a superseding deploy"), not `failed` with a raw `ConditionalCheckFailedException`. The cancel state machine ends `deploy_aborted` the same way when it loses the lock.
+
 ## 0.5.1
 
 UPGRADE NOTES:
