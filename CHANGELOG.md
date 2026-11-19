@@ -1,3 +1,13 @@
+## 0.5.1
+
+ENHANCEMENTS:
+
+* `notification_log` and `slack_notifier` now take cancels and undeploys from deployomat's own events too (`kind` is `cancel` or `undeploy`), with the same backstop as deploys: a run's status events are skipped when deployomat reported it, and still reported for a timeout, a console stop, a crash, or a finished event that didn't land. Slack no longer posts a line for a cancel that a deploy or undeploy started (a rollback, a concurrent-deploy cancel); its parent reports, as `notification_log` already did. The message text is unchanged.
+
+UPGRADE NOTES:
+
+* Release `deployomat`, `notification_log` and `slack_notifier` from this version together. A new reader beside a 0.5.0 deployomat drops every cancel's and undeploy's started line, since the reader skips `RUNNING` and that deployomat doesn't put its own.
+
 ## 0.5.0
 
 ENHANCEMENTS:

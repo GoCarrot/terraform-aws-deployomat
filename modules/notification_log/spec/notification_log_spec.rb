@@ -103,9 +103,34 @@ RSpec.describe NotificationLog do
       expect(phases).to eq(%w[completed completed failed failed unknown unknown])
     end
 
-    it 'leaves cancels and undeploys on status events' do
-      expect(JSON.parse(logged(event_for('cancel')).first)).to include('kind' => 'cancel', 'phase' => 'started')
-      expect(JSON.parse(logged(event_for('undeploy')).first)).to include('kind' => 'undeploy', 'phase' => 'started')
+    it 'does the same for cancels and undeploys' do
+      %w[cancel undeploy].each do |machine|
+        expect(skipped?(event_for(machine))).to be(true)
+        expect(skipped?(event_for(machine, status: 'SUCCEEDED',
+                                           output: { 'Status' => 'complete', 'Reported' => true }))).to be(true)
+        expect(skipped?(event_for(machine, status: 'FAILED', error: 'Deployomat.Reported'))).to be(true)
+
+        notes = [event_for(machine, status: 'SUCCEEDED', output: { 'Status' => 'complete' }),
+                 event_for(machine, status: 'FAILED', error: 'States.Runtime'),
+                 event_for(machine, status: 'TIMED_OUT'), event_for(machine, status: 'ABORTED')]
+                .map { |event| JSON.parse(logged(event).first) }
+        expect(notes.map { |n| n.values_at('kind', 'phase') })
+          .to eq([[machine, 'completed'], [machine, 'failed'], [machine, 'unknown'], [machine, 'unknown']])
+      end
+    end
+
+    it "logs deployomat's own cancel and undeploy events as they arrive" do
+      %w[cancel undeploy].each do |kind|
+        arn = "arn:aws:states:us-east-1:123456789012:execution:#{kind}:run-123"
+        detail = JSON.parse(JSON.generate(Deployomat::DeployEvent.detail(
+                                            kind: kind, phase: 'completed', service: 'carrot', account: 'production',
+                                            execution_arn: arn
+                                          )))
+        out, result = logged('source' => 'omat.deployomat', 'resources' => [arn], 'detail' => detail)
+
+        expect(JSON.parse(out)).to eq(detail)
+        expect(result).to eq('Logged completed for carrot')
+      end
     end
   end
 
@@ -117,7 +142,7 @@ RSpec.describe NotificationLog do
   it 'logs nothing for a cancel another execution started' do
     parent_arn = 'arn:aws:states:us-east-1:1:execution:deploy:p'
     nested = input.merge('AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID' => parent_arn)
-    out, result = logged(event_for('cancel', input: nested))
+    out, result = logged(event_for('cancel', status: 'SUCCEEDED', output: { 'Status' => 'complete' }, input: nested))
     expect(out).to eq('')
     expect(result).to eq('Skipping notification.')
   end

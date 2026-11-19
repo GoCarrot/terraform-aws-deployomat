@@ -212,6 +212,46 @@ RSpec.describe SlackNotify do
     end
   end
 
+  describe '.notification_for_deploy_event for a cancel or undeploy' do
+    def note(kind, phase, **extra)
+      detail = Deployomat::DeployEvent.detail(
+        kind: kind, phase: phase, service: 'audience', account: 'workload-prod',
+        execution_arn: "arn:aws:states:us-east-1:1:execution:#{kind}:run-1", **extra
+      )
+      JSON.parse(JSON.generate(detail))
+    end
+
+    it 'says the execution and no AMI' do
+      text = described_class.notification_for_deploy_event(note('undeploy', 'started'))[:text]
+
+      expect(text).to start_with('Undeploy audience from workload-prod: Started (Execution <')
+      expect(text).to end_with('|run-1>)')
+      expect(text).not_to include('AMI')
+    end
+
+    it 'adds the errors to a failure' do
+      failed = note('cancel', 'failed', errors: ['No deployment active'])
+      text = described_class.notification_for_deploy_event(failed)[:text]
+
+      expect(text).to start_with('Cancel deployment audience to workload-prod: Failed (Execution')
+      expect(text).to end_with("\n\nNo deployment active")
+    end
+
+    it 'adds the techno to a completed undeploy only when asked, as the status message does' do
+      completed = note('undeploy', 'completed')
+      expect(described_class.notification_for_deploy_event(completed)).not_to have_key(:blocks)
+
+      ENV['UNDEPLOY_TECHNO'] = 'true'
+      ENV['TECHNO_BEATS'] = 'https://example.com/techno'
+      result = described_class.notification_for_deploy_event(completed)
+      expect(result[:blocks].last[:text][:text]).to include('https://example.com/techno')
+      expect(described_class.notification_for_deploy_event(note('cancel', 'completed'))).not_to have_key(:blocks)
+    ensure
+      ENV.delete('UNDEPLOY_TECHNO')
+      ENV.delete('TECHNO_BEATS')
+    end
+  end
+
   describe '.handler' do
     let(:deploy_event) do
       {
@@ -259,21 +299,94 @@ RSpec.describe SlackNotify do
     end
 
     it 'posts nothing for a deploy-source event that is not a deploy notification' do
-      %w[cancel undeploy].each do |kind|
+      odd = { 'source' => 'omat.deployomat', 'resources' => ['x'],
+              'detail' => { 'schema' => 'other/2', 'kind' => 'deploy' } }
+      other_kind = { 'source' => 'omat.deployomat', 'resources' => ['x'],
+                     'detail' => { 'schema' => 'teak.deploy.notification/1', 'kind' => 'rollout' } }
+      [odd, other_kind].each do |event|
+        expect(described_class.handler(event: event,
+                                       context: {})).to eq('Skipping notification: not a deploy notification.')
+      end
+      expect(a_request(:post, 'https://slack.com/api/chat.postMessage')).not_to have_been_made
+    end
+
+    it "posts deployomat's own cancel and undeploy events, worded as their status events were" do
+      { 'cancel' => 'Cancel deployment api-service to production: Started',
+        'undeploy' => 'Undeploy api-service from production: Started' }.each do |kind, expected|
         detail = Deployomat::DeployEvent.detail(
           kind: kind, phase: 'started', service: 'api-service', account: 'production',
           execution_arn: "arn:aws:states:us-east-1:123456789012:execution:#{kind}:test-123"
         )
         event = { 'source' => 'omat.deployomat', 'resources' => [detail['execution_arn']],
                   'detail' => JSON.parse(JSON.generate(detail)) }
-        expect(described_class.handler(event: event,
-                                       context: {})).to eq('Skipping notification: not a deploy notification.')
+
+        expect(described_class.handler(event: event, context: {})).to include('Successfully notified')
+        expect(a_request(:post, 'https://slack.com/api/chat.postMessage')
+          .with { |req| JSON.parse(req.body)['text'].start_with?(expected) }).to have_been_made
       end
-      odd = { 'source' => 'omat.deployomat', 'resources' => ['x'],
-              'detail' => { 'schema' => 'other/2', 'kind' => 'deploy' } }
-      expect(described_class.handler(event: odd,
-                                     context: {})).to eq('Skipping notification: not a deploy notification.')
-      expect(a_request(:post, 'https://slack.com/api/chat.postMessage')).not_to have_been_made
+    end
+
+    describe 'the status events of a cancel or undeploy, as a backstop' do
+      let(:machines) { { 'undeploy' => 'UNDEPLOY_SFN_ARN', 'cancel' => 'CANCEL_SFN_ARN' } }
+
+      let(:input) { { 'ServiceName' => 'api-service', 'AccountCanonicalSlug' => 'production' } }
+
+      def machine_event(machine, change = {}, input: self.input)
+        arn = "arn:aws:states:us-east-1:123456789012:execution:#{machine}:run-1"
+        detail = { 'executionArn' => arn, 'name' => 'run-1', 'input' => input.to_json, 'status' => 'RUNNING' }
+        { 'resources' => [arn], 'detail' => detail.merge(change) }
+      end
+
+      around do |example|
+        saved = ENV.to_h.slice('UNDEPLOY_SFN_ARN', 'CANCEL_SFN_ARN')
+        ENV['UNDEPLOY_SFN_ARN'] = 'arn:aws:states:us-east-1:123456789012:stateMachine:undeploy'
+        ENV['CANCEL_SFN_ARN'] = 'arn:aws:states:us-east-1:123456789012:stateMachine:cancel'
+        example.run
+      ensure
+        saved.each { |k, v| ENV[k] = v }
+        (%w[UNDEPLOY_SFN_ARN CANCEL_SFN_ARN] - saved.keys).each { |k| ENV.delete(k) }
+      end
+
+      it 'skips what deployomat reported: the start, a Reported ending, a Deployomat.Reported failure' do
+        machines.each_key do |machine|
+          reported = [
+            machine_event(machine),
+            machine_event(machine, { 'status' => 'SUCCEEDED',
+                                     'output' => { 'Status' => 'complete', 'Reported' => true }.to_json }),
+            machine_event(machine, { 'status' => 'FAILED', 'error' => 'Deployomat.Reported' })
+          ]
+          reported.each do |event|
+            expect(described_class.handler(event: event,
+                                           context: {})).to eq('Skipping notification: deployomat reported it.')
+          end
+        end
+        expect(a_request(:post, 'https://slack.com/api/chat.postMessage')).not_to have_been_made
+      end
+
+      it 'posts what Step Functions ended on its own, or deployomat did not report' do
+        machines.each_key do |machine|
+          unreported = [
+            { 'status' => 'TIMED_OUT' }, { 'status' => 'ABORTED' },
+            { 'status' => 'FAILED', 'error' => 'States.Runtime' },
+            { 'status' => 'SUCCEEDED', 'output' => { 'Status' => 'complete', 'Reported' => false }.to_json }
+          ]
+          unreported.each do |change|
+            expect(described_class.handler(event: machine_event(machine, change), context: {}))
+              .to include('Successfully notified')
+          end
+        end
+      end
+
+      it 'skips a cancel another execution started, whatever way it ended' do
+        nested = { 'ServiceName' => 'api-service', 'AccountCanonicalSlug' => 'production',
+                   'AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID' => 'arn:aws:states:us-east-1:1:execution:deploy:p' }
+        [{ 'status' => 'SUCCEEDED', 'output' => { 'Status' => 'complete' }.to_json },
+         { 'status' => 'FAILED' }, { 'status' => 'TIMED_OUT' }].each do |change|
+          expect(described_class.handler(event: machine_event('cancel', change, input: nested), context: {}))
+            .to eq('Skipping notification: its parent reports it.')
+        end
+        expect(a_request(:post, 'https://slack.com/api/chat.postMessage')).not_to have_been_made
+      end
     end
 
     it 'reports an aborted deploy from the backstop, whose Error is a string' do
