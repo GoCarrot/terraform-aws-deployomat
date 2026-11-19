@@ -216,11 +216,13 @@ module SlackNotify
       http.post(POST_MESSAGE.path, JSON.generate(request), HEADERS)
     end
 
-    if response.code.to_i != 200
-      raise "Error calling slack #{response.body}"
-    else
-      return "Successfully notified #{ENV['SLACK_CHANNEL']}"
-    end
+    raise "Error calling slack #{response.body}" if response.code.to_i != 200
+
+    # Slack answers most failures (not_in_channel, invalid_auth) with a 200 and ok: false.
+    body = parse_object(response.body)
+    raise "Error calling slack: #{body['error'] || response.body}" unless body['ok'] == true
+
+    "Successfully notified #{ENV['SLACK_CHANNEL']}"
   end
 
   def self.handler(event:, context:)

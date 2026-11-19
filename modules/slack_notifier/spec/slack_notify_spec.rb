@@ -159,6 +159,23 @@ RSpec.describe SlackNotify do
       end.to raise_error(/Error calling slack/)
     end
 
+    it 'raises with Slack\'s error when a 200 says ok: false' do
+      stub_request(:post, 'https://slack.com/api/chat.postMessage')
+        .to_return(status: 200, body: { ok: false, error: 'not_in_channel' }.to_json)
+
+      expect do
+        described_class.notify(channel: '#test-deployments', text: 'Test message')
+      end.to raise_error(/Error calling slack: not_in_channel/)
+    end
+
+    it 'raises when a 200 body is not JSON' do
+      stub_request(:post, 'https://slack.com/api/chat.postMessage').to_return(status: 200, body: 'oops')
+
+      expect do
+        described_class.notify(channel: '#test-deployments', text: 'Test message')
+      end.to raise_error(/Error calling slack: oops/)
+    end
+
     it 'skips notification when text is nil' do
       result = described_class.notify(channel: '#test-deployments', text: nil)
       expect(result).to eq('Skipping notification.')
