@@ -29,6 +29,7 @@ module SlackNotify
   DEPLOY_PHASES = { 'started' => 'Started', 'completed' => 'Completed', 'aborted' => 'Aborted', 'failed' => 'Failed',
                     'unknown' => 'Ended with an unrecognised result' }
   # A run's ending always goes to Slack; SLACK_FORWARD_PHASES picks which of the other phases do.
+  # A new ending phase from deployomat must be added here, or a Reported run's last line is dropped.
   ENDING_PHASES = %w[completed failed aborted unknown].freeze
   DEFAULT_FORWARD_PHASES = %w[started].freeze
 

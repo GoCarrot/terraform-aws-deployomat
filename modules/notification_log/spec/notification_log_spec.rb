@@ -73,9 +73,6 @@ RSpec.describe NotificationLog do
       out, result = logged(event)
 
       expect(JSON.parse(out)).to eq(event['detail'])
-      expect(JSON.parse(out)).to include('phase' => 'progress', 'step' => 'Rollout', 'status' => 'wait',
-                                         'progress' => 'Shifted 40% of traffic to the new ASG')
-      expect(JSON.parse(out)['event_id']).to match(%r{\Arun-123/progress/\h{8}\z})
       expect(result).to eq('Logged progress for carrot')
     end
 

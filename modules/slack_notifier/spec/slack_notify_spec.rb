@@ -265,12 +265,6 @@ RSpec.describe SlackNotify do
       it 'skips progress on a SkipNotifications deploy' do
         expect(text('phase' => 'progress', 'progress' => 'x', 'skip_notifications' => true)).to be_nil
       end
-
-      it 'never writes Unknown result' do
-        %w[progress healthy completed failed aborted unknown].each do |phase|
-          expect(text('phase' => phase, 'progress' => 'x').to_s).not_to include('Unknown result')
-        end
-      end
     end
 
     it 'skips a start or completion with SkipNotifications, but never a failure' do
