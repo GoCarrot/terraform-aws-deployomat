@@ -6,7 +6,8 @@ RSpec.describe LambdaFunctions::Handler, '.undeploy' do
   include_context 'with deploy world'
 
   def undeploy(config = nil)
-    event = base_event.merge('DeployId' => 'exec-u', 'AllInput' => { 'UndeployConfig' => config })
+    event = base_event.merge('DeployId' => 'exec-u', 'Step' => 'Start', 'ExecutionArn' => UNDEPLOY_EXECUTION_ARN,
+                             'AllInput' => { 'UndeployConfig' => config })
     LambdaFunctions::Handler.undeploy(event: event, context: nil)
   end
 
@@ -17,7 +18,7 @@ RSpec.describe LambdaFunctions::Handler, '.undeploy' do
     it 'destroys the ASG, its rules and target group, then the row' do
       rule_id = production_rule[:rule_arn]
 
-      expect(undeploy).to eq(Status: :complete)
+      expect(undeploy).to eq(Status: :complete, Reported: true)
 
       expect(world.calls(:delete_auto_scaling_group)).to eq(
         [{ auto_scaling_group_name: production_asg, force_delete: true }]
@@ -30,7 +31,7 @@ RSpec.describe LambdaFunctions::Handler, '.undeploy' do
     it 'reports a deploy it can see in the row' do
       world.item['deploy_asg_name'] = 'thezoo-racing'
 
-      expect(undeploy).to eq(Status: :deploy_active, OnConcurrentDeploy: 'fail')
+      expect(undeploy).to eq(Status: :deploy_active, OnConcurrentDeploy: 'fail', Reported: true)
       expect(world.calls(:delete_auto_scaling_group)).to be_empty
     end
 
@@ -40,7 +41,9 @@ RSpec.describe LambdaFunctions::Handler, '.undeploy' do
       # deploy_id stays put, so only the deploy_asg_name clause can fail the condition.
       world.item['deploy_asg_name'] = 'thezoo-racing'
 
-      expect { Deployomat::Undeploy.new(config, undeploy_config: nil).call }.to raise_error(
+      reporter = instance_double(Deployomat::DeployEvent::Reporter, emit: true)
+
+      expect { Deployomat::Undeploy.new(config, undeploy_config: nil, reporter: reporter).call }.to raise_error(
         Aws::DynamoDB::Errors::ConditionalCheckFailedException
       )
       expect(world.calls(:delete_auto_scaling_group)).to be_empty
@@ -53,6 +56,12 @@ RSpec.describe LambdaFunctions::Handler, '.undeploy' do
 
       expect(states['KnownError']['Parameters']['Error.$']).to eq("#{states['StartUndeploy']['ResultPath']}.Error")
     end
+
+    it 'says the same thing for a concurrent deploy as the Lambda reports' do
+      states = JSON.parse(File.read(File.expand_path('../state_machines/undeploy.json', __dir__)))['States']
+
+      expect(states['FailConcurrentDeploy']['Parameters']['Error']).to eq([Deployomat::Undeploy::CONCURRENT])
+    end
   end
 
   describe 'a batch service' do
@@ -61,7 +70,7 @@ RSpec.describe LambdaFunctions::Handler, '.undeploy' do
     it 'destroys the ASG and the row, leaving the load balancer alone' do
       production_asg = world.with_template(target_group: false).with_production.item['production_asg_name']
 
-      expect(undeploy).to eq(Status: :complete)
+      expect(undeploy).to eq(Status: :complete, Reported: true)
 
       expect(world.calls(:delete_auto_scaling_group)).to eq(
         [{ auto_scaling_group_name: production_asg, force_delete: true }]

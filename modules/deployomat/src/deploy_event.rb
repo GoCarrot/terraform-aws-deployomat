@@ -21,8 +21,8 @@ require 'json'
 require 'time'
 
 module Deployomat
-  # Deployomat's own deploy event, put on the default EventBridge bus of the account it runs
-  # in. The detail is a Teak deploy notification (`teak.deploy.notification/1`, the shape
+  # Deployomat's own deploy, cancel and undeploy events, put on the default EventBridge bus of the
+  # account it runs in. The detail is a Teak deploy notification (`teak.deploy.notification/1`, the shape
   # notification_log writes), with `ami` as the AMI actually deployed and five more fields:
   #   ami_requested  the AmiId the deploy was started with, when it was a `$` command
   #   ami_tags       every tag on the AMI, {} when there are none or they can't be read
@@ -37,6 +37,9 @@ module Deployomat
   # let the Step Functions status event stand in for it.
   module DeployEvent
     SCHEMA = 'teak.deploy.notification/1'
+    # Present in the input of an execution that another execution started: the cancels a deploy or
+    # undeploy kicks off for a concurrent deploy or a rollback. Its parent reports the outcome.
+    PARENT_KEY = 'AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID'
     SOURCE = 'omat.deployomat'
     DETAIL_TYPE = 'Deployomat Deploy'
 
@@ -142,6 +145,16 @@ module Deployomat
     class Reporter
       CANCELLED = 'Deploy was cancelled due to a superseding deploy.'
 
+      # A cancel or undeploy step. A cancel that another execution started reports nothing: its parent does.
+      def self.for_run(event, kind)
+        input = event['AllInput'].is_a?(Hash) ? event['AllInput'] : {}
+        new(
+          execution_arn: event['ExecutionArn'], service: event['ServiceName'], account: event['AccountCanonicalSlug'],
+          step: event['Step'], kind: kind, silent: kind == 'cancel' && input.key?(PARENT_KEY),
+          skip_notifications: input.dig('DeployConfig', 'SkipNotifications') == true
+        )
+      end
+
       # `event` is the deploy Lambda's event. Steps after Start get Start's Ami and SkipNotifications
       # from deploy.json; Start has its DeployConfig.
       def self.for_step(event)
@@ -154,7 +167,10 @@ module Deployomat
       end
 
       # `ami` is the AMI Start resolved, as {Id, Tags}. Without one, `ami_requested` stands in.
-      def initialize(execution_arn:, service:, account:, step:, ami_requested: nil, ami: nil, skip_notifications: false)
+      def initialize(execution_arn:, service:, account:, step:, ami_requested: nil, ami: nil, skip_notifications: false,
+                     kind: 'deploy', silent: false)
+        @kind = kind
+        @silent = silent
         @execution_arn = execution_arn
         @service = service
         @account = account
@@ -166,10 +182,10 @@ module Deployomat
 
       # Puts one deploy event with any phase. True only when it landed; it never raises.
       def emit(phase, status: nil, errors: [], ami: @ami, progress: nil)
-        return false unless @execution_arn && @service
+        return false if @silent || !(@execution_arn && @service)
 
         DeployEvent.publish(DeployEvent.detail(
-          kind: 'deploy', phase: phase, service: @service, account: @account, execution_arn: @execution_arn,
+          kind: @kind, phase: phase, service: @service, account: @account, execution_arn: @execution_arn,
           ami_requested: @ami_requested, errors: errors, skip_notifications: @skip_notifications,
           step: @step, status: status, progress: progress, **DeployEvent.ami_fields(ami, @ami_requested)
         ))
@@ -196,6 +212,22 @@ module Deployomat
 
       def finish(phase, result, errors, ami)
         result.merge(Reported: emit(phase, status: result[:Status], errors: errors || Array(result[:Error]), ami: ami))
+      end
+    end
+
+    # The ending of a cancel or undeploy run that no Lambda step of ours decided: Start returned a
+    # status nothing matched. Puts the failed event and hands back `Reported`, which the state
+    # machine's Fail reads. Takes the run's whole state as `all_input`, because which fields exist
+    # depends on how far the run got.
+    class ReportFailure
+      def self.call(kind:, all_input:, execution_arn:, error:)
+        all_input = {} unless all_input.is_a?(Hash)
+        reporter = Reporter.new(
+          execution_arn: execution_arn, service: all_input['ServiceName'], account: all_input['AccountCanonicalSlug'],
+          step: 'Report', kind: kind, silent: kind == 'cancel' && all_input.key?(PARENT_KEY),
+          skip_notifications: all_input.dig('DeployConfig', 'SkipNotifications') == true
+        )
+        { Status: 'fail', Error: [error], Reported: reporter.emit('failed', status: 'fail', errors: [error]) }
       end
     end
 
