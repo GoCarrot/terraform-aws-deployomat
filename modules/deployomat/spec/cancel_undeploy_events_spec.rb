@@ -79,6 +79,15 @@ RSpec.describe LambdaFunctions::Handler, '.cancel and .undeploy events' do
       expect(phases).to eq([%w[undeploy started], %w[undeploy completed]])
     end
 
+    it 'puts no started event when it loses the row to a deploy that starts after it read it' do
+      # The row says a deploy is running, but Start read it before that.
+      world.item['deploy_asg_name'] = 'thezoo-racing'
+      allow_any_instance_of(Deployomat::Config).to receive(:deploy_asg).and_return('')
+
+      expect { undeploy_step }.to raise_error(Aws::DynamoDB::Errors::ConditionalCheckFailedException)
+      expect(world.deploy_events).to be_empty
+    end
+
     it 'ends unreported, and still undeploys, when EventBridge will not take the event' do
       world.fail_with(:put_events, 'InternalException')
 

@@ -58,11 +58,12 @@ module Deployomat
         return @reporter.failed(errors: [CONCURRENT], **result)
       end
 
-      # After the early returns above, so a run that comes back after cancelling a deploy reports it once.
-      @reporter.emit('started')
       puts "Asserting start of undeploy"
       @config.assert_start_undeploy
       puts "Undeploy operation asserted"
+      # After the early returns and the assert, so a run that comes back after cancelling a deploy, or loses
+      # the row to a deploy, reports no started line it didn't earn.
+      @reporter.emit('started')
 
       asg = Asg.new(@config)
       production_asg = asg.get(production_asg_name)
