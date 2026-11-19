@@ -45,7 +45,7 @@ module NotificationLog
       return "Unknown state machine trigger #{event.dig('resources', 0)}"
     end
 
-    return 'Skipping notification: deployomat reported it.' if NotificationEvent.reported_by_deployomat?(event, kind)
+    return 'Skipping notification: deployomat reported it.' if NotificationEvent.reported_by_deployomat?(event)
 
     notification = NotificationEvent.build(event, kind)
     return 'Skipping notification.' if notification.nil?

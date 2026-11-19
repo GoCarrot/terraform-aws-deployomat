@@ -8,7 +8,9 @@
         "AccountCanonicalSlug.$": "$.AccountCanonicalSlug",
         "ServiceName.$": "$.ServiceName",
         "DeployId.$": "$$.Execution.Name",
-        "AllInput.$": "$"
+        "AllInput.$": "$",
+        "Step": "Start",
+        "ExecutionArn.$": "$$.Execution.Id"
       },
       "ResultPath": "$.StartResult",
       "Resource": "${undeploy_lambda_arn}",
@@ -33,14 +35,15 @@
           "Next": "Success"
         }
       ],
-      "Default": "Fail"
+      "Default": "Report"
     },
     "KnownError": {
       "Type": "Pass",
       "End": true,
       "Parameters": {
         "Status": "fail",
-        "Error.$": "$.StartResult.Error"
+        "Error.$": "$.StartResult.Error",
+        "Reported.$": "$.StartResult.Reported"
       }
     },
     "Fail": {
@@ -50,7 +53,8 @@
       "Type": "Pass",
       "End": true,
       "Parameters": {
-        "Status": "complete"
+        "Status": "complete",
+        "Reported.$": "$.StartResult.Reported"
       }
     },
     "HandleConcurrentDeploy": {
@@ -71,7 +75,8 @@
         "Status": "fail",
         "Error": [
           "A deploy is running concurrently, and this undeploy was configured to fail in such a case."
-        ]
+        ],
+        "Reported.$": "$.StartResult.Reported"
       }
     },
     "CancelConcurrentDeploy": {
@@ -95,6 +100,63 @@
       ],
       "ResultPath": null,
       "Next": "StartUndeploy"
+    },
+    "Report": {
+      "Comment": "The ending no Lambda of ours decided: Start answered something nothing matched. Puts the failed event and returns Reported. Takes the whole state, because which fields exist depends on how far the run got. If Report itself fails, the run ends unmarked and the status-event readers report it.",
+      "Type": "Task",
+      "Parameters": {
+        "AllInput.$": "$",
+        "ExecutionArn.$": "$$.Execution.Id",
+        "Step": "Report"
+      },
+      "Resource": "${undeploy_lambda_arn}",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "MaxAttempts": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.ReportError",
+          "Next": "Fail"
+        }
+      ],
+      "ResultPath": "$.Outcome",
+      "Next": "ReportBranch"
+    },
+    "ReportBranch": {
+      "Comment": "Rules run in order, so the BooleanEquals only sees a Reported that exists; a missing path would be States.Runtime.",
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Not": {
+            "Variable": "$.Outcome.Reported",
+            "IsPresent": true
+          },
+          "Next": "Fail"
+        },
+        {
+          "Variable": "$.Outcome.Reported",
+          "BooleanEquals": true,
+          "Next": "FailReported"
+        }
+      ],
+      "Default": "Fail"
+    },
+    "FailReported": {
+      "Comment": "Status-event readers skip a FAILED run with this error: deployomat already reported it.",
+      "Type": "Fail",
+      "Error": "Deployomat.Reported",
+      "Cause": "The run failed and deployomat reported it."
     }
   }
 }

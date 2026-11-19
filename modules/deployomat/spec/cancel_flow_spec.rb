@@ -6,7 +6,8 @@ RSpec.describe LambdaFunctions::Handler, '.cancel' do
   include_context 'with deploy world'
 
   def cancel(name)
-    event = base_event.merge('DeployId' => 'exec-c', 'Step' => name)
+    event = base_event.merge('DeployId' => 'exec-c', 'Step' => name, 'ExecutionArn' => CANCEL_EXECUTION_ARN,
+                             'AllInput' => base_event)
     LambdaFunctions::Handler.cancel(event: event, context: nil)
   end
 
@@ -30,7 +31,7 @@ RSpec.describe LambdaFunctions::Handler, '.cancel' do
       expect(weights(rule_id)).to eq(DeployWorld::PRODUCTION_TG => 100)
       expect(world.item['deploy_id']).to eq('cancel-exec-c')
 
-      expect(cancel('Finish')).to eq(Status: :complete)
+      expect(cancel('Finish')).to eq(Status: :complete, Reported: true)
 
       expect(world.calls(:delete_auto_scaling_group)).to eq(
         [{ auto_scaling_group_name: new_asg_name, force_delete: true }]
@@ -78,7 +79,7 @@ RSpec.describe LambdaFunctions::Handler, '.cancel' do
       expect(world.calls(:delete_rule)).to eq([{ rule_arn: rule_id }])
       expect(world.rule(rule_id)).to be_nil
 
-      expect(cancel('Finish')).to eq(Status: :complete)
+      expect(cancel('Finish')).to eq(Status: :complete, Reported: true)
 
       expect(world.asgs.keys).to eq(["#{service}-template"])
       expect(new_tg_arn).to be_nil
@@ -95,7 +96,7 @@ RSpec.describe LambdaFunctions::Handler, '.cancel' do
       start
 
       expect(cancel('Start')).to eq(:success)
-      expect(cancel('Finish')).to eq(Status: :complete)
+      expect(cancel('Finish')).to eq(Status: :complete, Reported: true)
 
       expect(world.asgs).to include(old_asg)
       expect(world.calls(:delete_auto_scaling_group)).to eq(
