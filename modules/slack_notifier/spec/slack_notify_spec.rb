@@ -234,6 +234,16 @@ RSpec.describe SlackNotify do
         expect(text('phase' => 'unknown', 'errors' => ['odd'])).to include(': Ended with an unrecognised result (AMI')
           .and end_with("\n\nodd")
       end
+
+      it 'labels a cancel or undeploy unknown ending the same way, without an AMI' do
+        cancel = text('kind' => 'cancel', 'phase' => 'unknown', 'ami' => nil, 'ami_tags' => {}, 'errors' => ['odd'])
+        undeploy = text('kind' => 'undeploy', 'phase' => 'unknown', 'ami' => nil, 'ami_tags' => {}, 'errors' => ['odd'])
+        unrecognised = ': Ended with an unrecognised result (Execution <'
+        expect(cancel).to start_with("Cancel deployment audience to workload-prod#{unrecognised}")
+          .and end_with("\n\nodd")
+        expect(undeploy).to start_with("Undeploy audience from workload-prod#{unrecognised}")
+          .and end_with("\n\nodd")
+      end
     end
 
     context 'with forward_phases configured' do
