@@ -4,6 +4,11 @@ ENHANCEMENTS:
 
 * Undeploys and top-level cancels put their own events the way a deploy does (`kind` `undeploy` or `cancel`, no AMI): `started` once the work begins, then `completed` or `failed` from the step that ends the run, with `"Reported": true` in the output (or the error `Deployomat.Reported` for a `Report` task's ending). A cancel that a deploy or undeploy started puts nothing. The cancel and undeploy state machines gain a `Report` step for an ending no Lambda decided, and their steps now get the run's `ExecutionArn`.
 * `notification_log` and `slack_notifier` now take cancels and undeploys from deployomat's own events too (`kind` is `cancel` or `undeploy`), with the same backstop as deploys: a run's status events are skipped when deployomat reported it, and still reported for a timeout, a console stop, a crash, or a finished event that didn't land. Slack no longer posts a line for a cancel that a deploy or undeploy started (a rollback, a concurrent-deploy cancel); its parent reports, as `notification_log` already did. The message text is unchanged.
+* `slack_notifier` takes `forward_phases`, the deploy event phases besides a run's ending it posts (default `["started"]`; add `"progress"` for step lines, which 0.5.0 always skipped). Endings always post, and an `unknown` ending reads "Ended with an unrecognised result" instead of "Unknown result unknown".
+
+BUG FIXES:
+
+* `slack_notifier` raises when Slack answers a 200 with `ok: false` (`not_in_channel`, `invalid_auth`), so the failure shows in the Lambda's errors instead of passing as a post.
 
 UPGRADE NOTES:
 

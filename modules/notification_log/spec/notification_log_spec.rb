@@ -22,11 +22,11 @@ RSpec.describe NotificationLog do
   end
 
   # What deployomat puts, built by its own DeployEvent, as EventBridge delivers it.
-  def deploy_event(phase: 'started')
+  def deploy_event(phase: 'started', **fields)
     arn = 'arn:aws:states:us-east-1:123456789012:execution:deploy:run-123'
     detail = Deployomat::DeployEvent.detail(
       kind: 'deploy', phase: phase, service: 'carrot', account: 'production', execution_arn: arn,
-      ami: 'ami-0abc', ami_tags: { 'BuildCommit' => '09c4f525' }
+      ami: 'ami-0abc', ami_tags: { 'BuildCommit' => '09c4f525' }, **fields
     )
     { 'id' => 'evt-2', 'source' => 'omat.deployomat', 'detail-type' => 'Deployomat Deploy', 'resources' => [arn],
       'detail' => JSON.parse(JSON.generate(detail)) }
@@ -65,6 +65,15 @@ RSpec.describe NotificationLog do
       expect(JSON.parse(out)).to eq(event['detail'])
       expect(JSON.parse(out)).to include('ami_tags' => { 'BuildCommit' => '09c4f525' }, 'event_id' => 'run-123/started')
       expect(result).to eq('Logged started for carrot')
+    end
+
+    it 'write a progress event as it arrives, step and line included' do
+      event = deploy_event(phase: 'progress', step: 'Rollout', status: :wait,
+                           progress: 'Shifted 40% of traffic to the new ASG')
+      out, result = logged(event)
+
+      expect(JSON.parse(out)).to eq(event['detail'])
+      expect(result).to eq('Logged progress for carrot')
     end
 
     it 'are not written when the detail is not a notification' do

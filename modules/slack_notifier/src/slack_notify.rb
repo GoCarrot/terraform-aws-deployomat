@@ -30,7 +30,23 @@ module SlackNotify
   # undeploy kicks off for a concurrent deploy or a rollback. Its parent reports.
   PARENT_KEY = 'AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID'
   KINDS = %w[deploy cancel undeploy].freeze
-  DEPLOY_PHASES = { 'started' => 'Started', 'completed' => 'Completed', 'aborted' => 'Aborted', 'failed' => 'Failed' }
+  DEPLOY_PHASES = { 'started' => 'Started', 'completed' => 'Completed', 'aborted' => 'Aborted', 'failed' => 'Failed',
+                    'unknown' => 'Ended with an unrecognised result' }
+  # A run's ending always goes to Slack; SLACK_FORWARD_PHASES picks which of the other phases do.
+  # A new ending phase from deployomat must be added here, or a Reported run's last line is dropped.
+  ENDING_PHASES = %w[completed failed aborted unknown].freeze
+  DEFAULT_FORWARD_PHASES = %w[started].freeze
+
+  def self.forward_phases
+    configured = ENV['SLACK_FORWARD_PHASES']
+    return DEFAULT_FORWARD_PHASES if configured.nil?
+
+    configured.split(',').map(&:strip).reject(&:empty?)
+  end
+
+  def self.forwarded?(phase)
+    ENDING_PHASES.include?(phase) || forward_phases.include?(phase)
+  end
 
   # True when deployomat already reported this run itself (see its README, "Deploy events").
   def self.reported_by_deployomat?(event)
@@ -74,9 +90,8 @@ module SlackNotify
   # Same text as the status-event message. A deploy adds the AMI and the commit it was built from.
   def self.notification_for_deploy_event(note)
     phase = note['phase']
-    # Rollout's progress events don't go to Slack.
-    return { text: nil } if phase == 'progress'
-    return { text: nil } if note['skip_notifications'] && %w[started completed].include?(phase)
+    return { text: nil } unless forwarded?(phase)
+    return { text: nil } if note['skip_notifications'] && !%w[failed aborted unknown].include?(phase)
 
     execution = "Execution <https://console.aws.amazon.com/states/home?region=#{ENV['AWS_REGION']}#/executions/details/#{note['execution_arn']}|#{note['execution']}>"
     base, details = case note['kind']
@@ -84,10 +99,12 @@ module SlackNotify
                     when 'undeploy' then ["Undeploy #{note['service']} from #{note['account']}", execution]
                     else ["Deploy #{note['service']} to #{note['account']}", "#{ami_details(note)}, #{execution}"]
                     end
-    label = DEPLOY_PHASES.fetch(phase) { "Unknown result #{phase}" }
+    label = deploy_label(note)
+    return { text: nil } if label.nil?
+
     text = "#{base}: #{label} (#{details})"
     errors = Array(note['errors'])
-    text = "#{text}\n\n#{errors.join("\n")}" if %w[failed aborted].include?(phase) && !errors.empty?
+    text = "#{text}\n\n#{errors.join("\n")}" if %w[failed aborted unknown].include?(phase) && !errors.empty?
     return undeploy_techno(text) if note['kind'] == 'undeploy' && phase == 'completed'
 
     { text: text }
@@ -100,6 +117,16 @@ module SlackNotify
     commit = note.dig('ami_tags', 'BuildCommit').to_s
     commit_text = commit.match?(/\A\h{7,40}\z/) ? ", commit #{commit[0, 7]}" : ''
     "#{ami_text}#{commit_text}"
+  end
+
+  # A step's own line for `progress` (free-form, so stringified), the known label, or the phase itself.
+  def self.deploy_label(note)
+    phase = note['phase'].to_s
+    return DEPLOY_PHASES[phase] if DEPLOY_PHASES.key?(phase)
+    return phase.capitalize unless phase == 'progress'
+
+    progress = note['progress'].to_s.strip
+    progress.empty? ? nil : progress
   end
 
   def self.notification_for_event(event)
@@ -212,11 +239,13 @@ module SlackNotify
       http.post(POST_MESSAGE.path, JSON.generate(request), HEADERS)
     end
 
-    if response.code.to_i != 200
-      raise "Error calling slack #{response.body}"
-    else
-      return "Successfully notified #{ENV['SLACK_CHANNEL']}"
-    end
+    raise "Error calling slack #{response.body}" if response.code.to_i != 200
+
+    # Slack answers most failures (not_in_channel, invalid_auth) with a 200 and ok: false.
+    body = parse_object(response.body)
+    raise "Error calling slack: #{body['error'] || response.body}" unless body['ok'] == true
+
+    "Successfully notified #{ENV['SLACK_CHANNEL']}"
   end
 
   def self.handler(event:, context:)

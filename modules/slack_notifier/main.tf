@@ -123,14 +123,15 @@ resource "aws_lambda_function" "deployomat-slack-notify" {
 
   environment {
     variables = {
-      SLACK_CHANNEL       = var.slack_notification_channel
-      SLACK_BOT_TOKEN     = var.slack_bot_token
-      DEPLOY_SFN_ARN      = var.deploy_sfn.arn
-      CANCEL_SFN_ARN      = var.cancel_sfn != null ? var.cancel_sfn.arn : ""
-      UNDEPLOY_SFN_ARN    = var.undeploy_sfn.arn
-      UNDEPLOY_TECHNO     = var.techno ? "true" : "false"
-      TECHNO_BEATS        = var.hot_techno_beats
-      DEPLOY_EVENT_SOURCE = var.deploy_event.source
+      SLACK_CHANNEL        = var.slack_notification_channel
+      SLACK_BOT_TOKEN      = var.slack_bot_token
+      SLACK_FORWARD_PHASES = join(",", var.forward_phases)
+      DEPLOY_SFN_ARN       = var.deploy_sfn.arn
+      CANCEL_SFN_ARN       = var.cancel_sfn != null ? var.cancel_sfn.arn : ""
+      UNDEPLOY_SFN_ARN     = var.undeploy_sfn.arn
+      UNDEPLOY_TECHNO      = var.techno ? "true" : "false"
+      TECHNO_BEATS         = var.hot_techno_beats
+      DEPLOY_EVENT_SOURCE  = var.deploy_event.source
     }
   }
 

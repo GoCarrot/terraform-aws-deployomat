@@ -28,6 +28,8 @@ require 'time'
 #   schema, event_id, time (iso8601), kind (deploy|cancel|undeploy),
 #   phase (started|completed|failed|aborted|unknown), service, account, ami (or nil),
 #   execution, execution_arn, errors (array of strings), skip_notifications (bool)
+# deployomat's own events also carry phase `progress` (a step's line, not an ending). A new
+# ending phase must go in slack_notifier's ENDING_PHASES too, or Slack drops that run's last line.
 module NotificationEvent
   SCHEMA = 'teak.deploy.notification/1'
 

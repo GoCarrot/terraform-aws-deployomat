@@ -159,6 +159,23 @@ RSpec.describe SlackNotify do
       end.to raise_error(/Error calling slack/)
     end
 
+    it 'raises with Slack\'s error when a 200 says ok: false' do
+      stub_request(:post, 'https://slack.com/api/chat.postMessage')
+        .to_return(status: 200, body: { ok: false, error: 'not_in_channel' }.to_json)
+
+      expect do
+        described_class.notify(channel: '#test-deployments', text: 'Test message')
+      end.to raise_error(/Error calling slack: not_in_channel/)
+    end
+
+    it 'raises when a 200 body is not JSON' do
+      stub_request(:post, 'https://slack.com/api/chat.postMessage').to_return(status: 200, body: 'oops')
+
+      expect do
+        described_class.notify(channel: '#test-deployments', text: 'Test message')
+      end.to raise_error(/Error calling slack: oops/)
+    end
+
     it 'skips notification when text is nil' do
       result = described_class.notify(channel: '#test-deployments', text: nil)
       expect(result).to eq('Skipping notification.')
@@ -201,14 +218,70 @@ RSpec.describe SlackNotify do
       expect(text('phase' => 'aborted', 'errors' => ['superseded'])).to end_with("\n\nsuperseded")
     end
 
-    it 'skips Rollout\'s progress events' do
-      expect(text('phase' => 'progress', 'status' => 'wait', 'progress' => 40)).to be_nil
+    context 'with the default forward_phases' do
+      around do |example|
+        original = ENV.delete('SLACK_FORWARD_PHASES')
+        example.run
+      ensure
+        ENV['SLACK_FORWARD_PHASES'] = original
+      end
+
+      it 'skips progress events' do
+        expect(text('phase' => 'progress', 'status' => 'wait', 'progress' => 'Shifted 40% of traffic')).to be_nil
+      end
+
+      it 'labels an unknown ending and keeps its errors' do
+        expect(text('phase' => 'unknown', 'errors' => ['odd'])).to include(': Ended with an unrecognised result (AMI')
+          .and end_with("\n\nodd")
+      end
+
+      it 'labels a cancel or undeploy unknown ending the same way, without an AMI' do
+        cancel = text('kind' => 'cancel', 'phase' => 'unknown', 'ami' => nil, 'ami_tags' => {}, 'errors' => ['odd'])
+        undeploy = text('kind' => 'undeploy', 'phase' => 'unknown', 'ami' => nil, 'ami_tags' => {}, 'errors' => ['odd'])
+        unrecognised = ': Ended with an unrecognised result (Execution <'
+        expect(cancel).to start_with("Cancel deployment audience to workload-prod#{unrecognised}")
+          .and end_with("\n\nodd")
+        expect(undeploy).to start_with("Undeploy audience from workload-prod#{unrecognised}")
+          .and end_with("\n\nodd")
+      end
+    end
+
+    context 'with forward_phases configured' do
+      around do |example|
+        original = ENV['SLACK_FORWARD_PHASES']
+        ENV['SLACK_FORWARD_PHASES'] = 'progress, healthy'
+        example.run
+      ensure
+        ENV['SLACK_FORWARD_PHASES'] = original
+      end
+
+      it 'forwards a configured phase, with progress as its line' do
+        expect(text('phase' => 'progress', 'progress' => 'Shifted 40% of traffic to the new ASG'))
+          .to start_with('Deploy audience to workload-prod: Shifted 40% of traffic to the new ASG (AMI <')
+        expect(text('phase' => 'healthy')).to include(': Healthy (AMI <')
+      end
+
+      it 'skips a phase left out, but never an ending' do
+        expect(text('phase' => 'started')).to be_nil
+        %w[completed failed aborted unknown].each { |phase| expect(text('phase' => phase)).not_to be_nil }
+      end
+
+      it 'stringifies a non-string progress and skips an empty one' do
+        expect(text('phase' => 'progress', 'progress' => 40)).to include(': 40 (AMI')
+        expect(text('phase' => 'progress', 'progress' => nil)).to be_nil
+        expect(text('phase' => 'progress', 'progress' => ' ')).to be_nil
+      end
+
+      it 'skips progress on a SkipNotifications deploy' do
+        expect(text('phase' => 'progress', 'progress' => 'x', 'skip_notifications' => true)).to be_nil
+      end
     end
 
     it 'skips a start or completion with SkipNotifications, but never a failure' do
       expect(text('skip_notifications' => true)).to be_nil
       expect(text('skip_notifications' => true, 'phase' => 'completed')).to be_nil
       expect(text('skip_notifications' => true, 'phase' => 'failed')).to include('Failed')
+      expect(text('skip_notifications' => true, 'phase' => 'unknown')).to include('unrecognised')
     end
   end
 
