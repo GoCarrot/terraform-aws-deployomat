@@ -26,7 +26,22 @@ module SlackNotify
 
   # The error of a deploy run that failed after deployomat reported it (deploy.json FailReported).
   REPORTED_ERROR = 'Deployomat.Reported'
-  DEPLOY_PHASES = { 'started' => 'Started', 'completed' => 'Completed', 'aborted' => 'Aborted', 'failed' => 'Failed' }
+  DEPLOY_PHASES = { 'started' => 'Started', 'completed' => 'Completed', 'aborted' => 'Aborted', 'failed' => 'Failed',
+                    'unknown' => 'Ended with an unrecognised result' }
+  # A run's ending always goes to Slack; SLACK_FORWARD_PHASES picks which of the other phases do.
+  ENDING_PHASES = %w[completed failed aborted unknown].freeze
+  DEFAULT_FORWARD_PHASES = %w[started].freeze
+
+  def self.forward_phases
+    configured = ENV['SLACK_FORWARD_PHASES']
+    return DEFAULT_FORWARD_PHASES if configured.nil?
+
+    configured.split(',').map(&:strip).reject(&:empty?)
+  end
+
+  def self.forwarded?(phase)
+    ENDING_PHASES.include?(phase) || forward_phases.include?(phase)
+  end
 
   # True when deployomat already reported this deploy run itself (see its README, "Deploy events").
   def self.reported_by_deployomat?(event)
@@ -56,20 +71,31 @@ module SlackNotify
   # and its tags. Same text as the status-event message, plus the commit the AMI was built from.
   def self.notification_for_deploy_event(note)
     phase = note['phase']
-    # Rollout's progress events don't go to Slack.
-    return { text: nil } if phase == 'progress'
-    return { text: nil } if note['skip_notifications'] && %w[started completed].include?(phase)
+    return { text: nil } unless forwarded?(phase)
+    return { text: nil } if note['skip_notifications'] && !%w[failed aborted unknown].include?(phase)
 
     ami = note['ami']
     ami_text = ami ? "AMI <https://console.aws.amazon.com/ec2/v2/home?region=#{ENV['AWS_REGION']}#ImageDetails:imageId=#{ami}|#{ami}>" : "AMI #{note['ami_requested'] || 'unknown'}"
     commit = note.dig('ami_tags', 'BuildCommit').to_s
     commit_text = commit.match?(/\A\h{7,40}\z/) ? ", commit #{commit[0, 7]}" : ''
     details = "(#{ami_text}#{commit_text}, Execution <https://console.aws.amazon.com/states/home?region=#{ENV['AWS_REGION']}#/executions/details/#{note['execution_arn']}|#{note['execution']}>)"
-    label = DEPLOY_PHASES.fetch(phase) { "Unknown result #{phase}" }
+    label = deploy_label(note)
+    return { text: nil } if label.nil?
+
     text = "Deploy #{note['service']} to #{note['account']}: #{label} #{details}"
     errors = Array(note['errors'])
-    text = "#{text}\n\n#{errors.join("\n")}" if %w[failed aborted].include?(phase) && !errors.empty?
+    text = "#{text}\n\n#{errors.join("\n")}" if %w[failed aborted unknown].include?(phase) && !errors.empty?
     { text: text }
+  end
+
+  # A step's own line for `progress` (free-form, so stringified), the known label, or the phase itself.
+  def self.deploy_label(note)
+    phase = note['phase'].to_s
+    return DEPLOY_PHASES[phase] if DEPLOY_PHASES.key?(phase)
+    return phase.capitalize unless phase == 'progress'
+
+    progress = note['progress'].to_s.strip
+    progress.empty? ? nil : progress
   end
 
   def self.notification_for_event(event)

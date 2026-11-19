@@ -72,6 +72,12 @@ variable "deploy_event" {
   }
 }
 
+variable "forward_phases" {
+  type        = list(string)
+  description = "Deploy event phases besides a run's ending to post to Slack, e.g. [\"started\", \"progress\"]. A run's ending (completed, failed, aborted, unknown) always posts."
+  default     = ["started"]
+}
+
 variable "custom_update_event_source" {
   type        = string
   description = "The custom event source used for in-progress update notifications"
