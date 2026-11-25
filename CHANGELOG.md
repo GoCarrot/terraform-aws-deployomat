@@ -1,3 +1,10 @@
+## Unreleased
+
+BUG FIXES:
+
+* A deploy aborted by a manual cancel says "Deploy was cancelled." instead of "Deploy was cancelled due to a superseding deploy.". The superseding wording stays for a deploy a newer deploy's cancel superseded.
+* The `Error` on an aborted deploy's Step Functions output is now a list, as it already was on deploy events. It was a plain string on the cancelled-deploy endings.
+
 ## 0.5.2
 
 BUG FIXES:

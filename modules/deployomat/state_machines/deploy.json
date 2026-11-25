@@ -284,7 +284,7 @@
       "Type": "Pass",
       "Parameters": {
         "Status": "deploy_aborted",
-        "Error": "Deploy was cancelled due to a superseding deploy.",
+        "Error.$": "$.CheckHealthy.Output.Error",
         "Reported.$": "$.CheckHealthy.Output.Reported"
       },
       "ResultPath": "$.Outcome",
@@ -365,7 +365,7 @@
       "Type": "Pass",
       "Parameters": {
         "Status": "deploy_aborted",
-        "Error": "Deploy was cancelled due to a superseding deploy.",
+        "Error.$": "$.RolloutStatus.Output.Error",
         "Reported.$": "$.RolloutStatus.Output.Reported"
       },
       "ResultPath": "$.Outcome",
@@ -419,7 +419,7 @@
       "Type": "Pass",
       "Parameters": {
         "Status": "deploy_aborted",
-        "Error": "Deploy was cancelled due to a superseding deploy.",
+        "Error.$": "$.Coalesce.Error",
         "Reported.$": "$.Coalesce.Reported"
       },
       "ResultPath": "$.Outcome",
@@ -488,7 +488,7 @@
       "Type": "Pass",
       "Parameters": {
         "Status": "deploy_aborted",
-        "Error": "Deploy was cancelled due to a superseding deploy.",
+        "Error.$": "$.BakeStatus.Output.Error",
         "Reported.$": "$.BakeStatus.Output.Reported"
       },
       "ResultPath": "$.Outcome",

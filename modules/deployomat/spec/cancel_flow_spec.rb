@@ -11,6 +11,14 @@ RSpec.describe LambdaFunctions::Handler, '.cancel' do
     LambdaFunctions::Handler.cancel(event: event, context: nil)
   end
 
+  # A cancel a deploy started for a newer deploy carries its parent's execution ARN; a manual one doesn't.
+  def cancel_from(by_deploy, name)
+    parent = by_deploy ? { 'AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID' => DEPLOY_EXECUTION_ARN } : {}
+    event = base_event.merge('DeployId' => 'exec-c', 'Step' => name, 'ExecutionArn' => CANCEL_EXECUTION_ARN,
+                             'AllInput' => base_event.merge(parent))
+    LambdaFunctions::Handler.cancel(event: event, context: nil)
+  end
+
   describe 'a rolling deploy mid-rollout' do
     let(:old_asg) { world.item['production_asg_name'] }
     let(:started) { start }
@@ -105,6 +113,49 @@ RSpec.describe LambdaFunctions::Handler, '.cancel' do
       expect(world.calls(:delete_target_group)).to be_empty
       expect(world.calls(:delete_rule)).to be_empty
       expect(world.item).to include('production_asg_name' => old_asg, 'deploy_asg_name' => '')
+    end
+  end
+
+  # The old deploy trips on its next conditional write once a cancel has its lock. Its Finish comes after
+  # Bake, and by then a newer deploy may already hold the row, so the reason has to be on the row.
+  describe 'the old deploy finding out it lost the lock after a newer deploy has started' do
+    let(:parent) { false }
+    let(:superseding) { 'Deploy was cancelled due to a superseding deploy.' }
+
+    before do
+      world.with_template.with_production
+      start
+      cancel_from(parent, 'Start')
+      cancel_from(parent, 'Finish')
+      start(deploy_id: 'exec-2')
+    end
+
+    def finish_old_deploy
+      step('Finish', 'AllowUndeploy' => true)
+    end
+
+    context 'when a manual cancel took the lock' do
+      it 'records the cancel as manual on the row' do
+        expect(world.item).to include('deploy_id' => 'deploy-exec-2', 'cancel_by' => 'manual')
+      end
+
+      it 'ends the old deploy aborted with the cancel wording' do
+        expect(finish_old_deploy).to eq(Status: :deploy_aborted, Error: ['Deploy was cancelled.'], Reported: true)
+        expect(world.deploy_events.last).to include('phase' => 'aborted', 'errors' => ['Deploy was cancelled.'])
+      end
+    end
+
+    context 'when a newer deploy\'s cancel took the lock' do
+      let(:parent) { true }
+
+      it 'records the cancel as a deploy cancel on the row' do
+        expect(world.item).to include('deploy_id' => 'deploy-exec-2', 'cancel_by' => 'deploy')
+      end
+
+      it 'ends the old deploy aborted with the superseding wording' do
+        expect(finish_old_deploy).to eq(Status: :deploy_aborted, Error: [superseding], Reported: true)
+        expect(world.deploy_events.last).to include('phase' => 'aborted', 'errors' => [superseding])
+      end
     end
   end
 

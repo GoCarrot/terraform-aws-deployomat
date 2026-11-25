@@ -144,6 +144,7 @@ module Deployomat
     # so it puts nothing and every result comes back Reported false.
     class Reporter
       CANCELLED = 'Deploy was cancelled due to a superseding deploy.'
+      CANCELLED_MANUAL = 'Deploy was cancelled.'
 
       # A cancel or undeploy step. A cancel that another execution started reports nothing: its parent does.
       def self.for_run(event, kind)
@@ -205,7 +206,7 @@ module Deployomat
       end
 
       def aborted(errors: nil, ami: @ami, **result)
-        finish('aborted', result, errors || (Array(result[:Error]).empty? ? [CANCELLED] : nil), ami)
+        finish('aborted', result, errors, ami)
       end
 
       private

@@ -36,7 +36,7 @@ module LambdaFunctions
       reporter = Deployomat::DeployEvent::Reporter.for_run(event, 'cancel')
       op =
         if event['Step'] == 'Start'
-          Deployomat::StartCancel.new(config, reporter: reporter)
+          Deployomat::StartCancel.new(config, reporter: reporter, by_deploy: started_by_deploy?(event))
         else
           Deployomat::FinishCancel.new(config, reporter: reporter)
         end
@@ -127,6 +127,12 @@ module LambdaFunctions
       Deployomat::DeployEvent::ReportFailure.call(
         kind: kind, all_input: event['AllInput'], execution_arn: event['ExecutionArn'], error: error
       )
+    end
+
+    # A cancel another execution started, such as a deploy's cancel for a newer deploy, carries its parent's ARN.
+    def self.started_by_deploy?(event)
+      input = event['AllInput']
+      input.is_a?(Hash) && input.key?(Deployomat::DeployEvent::PARENT_KEY)
     end
 
     # Why cancel.json reached its Report step: Start found no deploy to cancel, or answered something unexpected.

@@ -22,6 +22,13 @@ module Deployomat
   NOT_ACTIVE_MSG = "No longer active deploy."
   ACTIVE_ASSERT_MSG = "Asserted active"
 
+  # The row no longer names this deploy, so the run was aborted. Say why, as the row records it: a deploy's
+  # cancel took the lock (a newer deploy superseded this one), or a manual cancel did.
+  def self.aborted_for_lock(reporter, config)
+    reason = config.lock_taken_by_deploy? ? DeployEvent::Reporter::CANCELLED : DeployEvent::Reporter::CANCELLED_MANUAL
+    reporter.aborted(Status: :deploy_aborted, Error: [reason])
+  end
+
   class StartDeploy
     extend Forwardable
 
@@ -395,7 +402,7 @@ module Deployomat
         @config.assert_active
       rescue Aws::DynamoDB::Errors::ConditionalCheckFailedException
         puts NOT_ACTIVE_MSG
-        return @reporter.aborted(Status: :deploy_aborted)
+        return Deployomat.aborted_for_lock(@reporter, @config)
       end
       puts ACTIVE_ASSERT_MSG
 
@@ -446,7 +453,7 @@ module Deployomat
           @config.assert_active
         rescue Aws::DynamoDB::Errors::ConditionalCheckFailedException
           puts NOT_ACTIVE_MSG
-          return @reporter.aborted(Status: :deploy_aborted)
+          return Deployomat.aborted_for_lock(@reporter, @config)
         end
         puts ACTIVE_ASSERT_MSG
         elbv2.shift_traffic(rule, step_size, old_target_group_arn, target_group_arn)
@@ -483,7 +490,7 @@ module Deployomat
           @config.assert_active
         rescue Aws::DynamoDB::Errors::ConditionalCheckFailedException
           puts NOT_ACTIVE_MSG
-          return @reporter.aborted(Status: :deploy_aborted)
+          return Deployomat.aborted_for_lock(@reporter, @config)
         end
         puts ACTIVE_ASSERT_MSG
         elbv2.coalesce(rule, target_group_arn)
@@ -543,7 +550,7 @@ module Deployomat
         @config.assert_active
       rescue Aws::DynamoDB::Errors::ConditionalCheckFailedException
         puts NOT_ACTIVE_MSG
-        return @reporter.aborted(Status: :deploy_aborted)
+        return Deployomat.aborted_for_lock(@reporter, @config)
       end
       puts ACTIVE_ASSERT_MSG
 

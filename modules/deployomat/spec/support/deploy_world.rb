@@ -31,7 +31,7 @@ class DeployWorld
   NO_DEPLOY_ASG = ->(attr) { attr['#DEPLOY_ASG'].to_s.empty? }
 
   GUARDS = {
-    ['SET #DEPLOY_ID = :new_deploy_id',
+    ['SET #DEPLOY_ID = :new_deploy_id, #CANCEL_BY = :cancel_by',
      '#DEPLOY_ID = :old_deploy_id AND attribute_exists(#DEPLOY_ASG) AND #DEPLOY_ASG <> :empty'] =>
       ->(attr, values) { attr['#DEPLOY_ID'] == values[':old_deploy_id'] && !NO_DEPLOY_ASG[attr] },
 

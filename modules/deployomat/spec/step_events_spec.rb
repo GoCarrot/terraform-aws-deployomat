@@ -100,15 +100,33 @@ RSpec.describe LambdaFunctions::Handler, '.deploy step events' do
       expect(events_after_started).to contain_exactly(include(expected))
     end
 
-    it 'reports a superseded Coalesce as aborted' do
+    it 'reports a Coalesce a newer deploy superseded as aborted, saying so' do
+      rule_ids = started[:RuleIds]
+      world.item.merge!('deploy_id' => 'deploy-someone-else', 'cancel_by' => 'deploy')
+
+      expect(step('Coalesce', from_start.merge('TargetGroupArn' => new_tg_arn, 'RuleIds' => rule_ids)))
+        .to eq(Status: :deploy_aborted, Error: [Deployomat::DeployEvent::Reporter::CANCELLED], Reported: true)
+      expect(events_after_started).to contain_exactly(
+        include('phase' => 'aborted', 'step' => 'Coalesce', 'errors' => [Deployomat::DeployEvent::Reporter::CANCELLED])
+      )
+    end
+
+    it 'reports a Coalesce a manual cancel ended as aborted, without the superseding wording' do
+      rule_ids = started[:RuleIds]
+      world.item.merge!('deploy_id' => 'cancel-exec-c', 'cancel_by' => 'manual')
+
+      expect(step('Coalesce', from_start.merge('TargetGroupArn' => new_tg_arn, 'RuleIds' => rule_ids)))
+        .to eq(Status: :deploy_aborted, Error: ['Deploy was cancelled.'], Reported: true)
+      expect(events_after_started.map { |e| e.values_at('phase', 'errors') })
+        .to eq([['aborted', ['Deploy was cancelled.']]])
+    end
+
+    it 'treats a row with no cancel_by as a manual cancel, for rows written before cancel_by existed' do
       rule_ids = started[:RuleIds]
       world.item['deploy_id'] = 'deploy-someone-else'
 
       expect(step('Coalesce', from_start.merge('TargetGroupArn' => new_tg_arn, 'RuleIds' => rule_ids)))
-        .to eq(Status: :deploy_aborted, Reported: true)
-      expect(events_after_started).to contain_exactly(
-        include('phase' => 'aborted', 'step' => 'Coalesce', 'errors' => [Deployomat::DeployEvent::Reporter::CANCELLED])
-      )
+        .to eq(Status: :deploy_aborted, Error: ['Deploy was cancelled.'], Reported: true)
     end
 
     it 'puts a progress event after each Rollout shift, without ending the run' do
@@ -203,7 +221,7 @@ RSpec.describe LambdaFunctions::Handler, '.deploy step events' do
     world.item['deploy_id'] = 'deploy-someone-else'
 
     expect(step('Finish', 'AllowUndeploy' => true, 'ExecutionArn' => nil))
-      .to eq(Status: :deploy_aborted, Reported: false)
+      .to eq(Status: :deploy_aborted, Error: ['Deploy was cancelled.'], Reported: false)
     expect(events_after_started).to be_empty
   end
 
