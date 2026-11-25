@@ -496,18 +496,19 @@ RSpec.describe LambdaFunctions::Handler, '.deploy' do
   end
 
   describe 'aborting' do
+    let(:started) { start }
+    let(:rule_ids) { started[:RuleIds] }
+    let(:superseded) { [Deployomat::DeployEvent::Reporter::CANCELLED] }
+
     before do
       world.with_template.with_production
       rule_ids
-      world.item['deploy_id'] = 'deploy-someone-else'
+      world.item.merge!('deploy_id' => 'deploy-someone-else', 'cancel_by' => 'deploy')
     end
-
-    let(:started) { start }
-    let(:rule_ids) { started[:RuleIds] }
 
     it 'stops CheckHealthy' do
       expect(step('CheckHealthy', 'MinHealthy' => 3, 'TargetGroupArn' => new_tg_arn, 'WaitTime' => 30)).to eq(
-        Status: :deploy_aborted, Reported: true
+        Status: :deploy_aborted, Error: superseded, Reported: true
       )
     end
 
@@ -515,18 +516,18 @@ RSpec.describe LambdaFunctions::Handler, '.deploy' do
       result = step('Rollout', 'StepSize' => 50, 'StepDelay' => 1, 'RuleIds' => rule_ids,
                                'TargetGroupArn' => new_tg_arn, 'OldTargetGroupArn' => DeployWorld::PRODUCTION_TG)
 
-      expect(result).to eq(Reported: true, Status: :deploy_aborted)
+      expect(result).to eq(Error: superseded, Reported: true, Status: :deploy_aborted)
       expect(world.calls(:modify_rule).length).to eq(1)
     end
 
     it 'stops Coalesce' do
       expect(step('Coalesce', 'TargetGroupArn' => new_tg_arn, 'RuleIds' => rule_ids))
-        .to eq(Reported: true, Status: :deploy_aborted)
+        .to eq(Error: superseded, Reported: true, Status: :deploy_aborted)
       expect(world.calls(:modify_rule).length).to eq(1)
     end
 
     it 'stops Finish without replacing production' do
-      expect(step('Finish', 'AllowUndeploy' => true)).to eq(Reported: true, Status: :deploy_aborted)
+      expect(step('Finish', 'AllowUndeploy' => true)).to eq(Error: superseded, Reported: true, Status: :deploy_aborted)
       expect(world.calls(:delete_auto_scaling_group)).to be_empty
     end
   end

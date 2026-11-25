@@ -1,3 +1,9 @@
+## Unreleased
+
+BUG FIXES:
+
+* A deploy aborted by a manual cancel says "Deploy was cancelled." instead of "Deploy was cancelled due to a superseding deploy.". The superseding wording stays for a deploy a newer deploy's cancel superseded.
+
 ## 0.5.2
 
 BUG FIXES:

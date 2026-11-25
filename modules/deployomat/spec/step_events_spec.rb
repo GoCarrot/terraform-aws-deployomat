@@ -221,7 +221,7 @@ RSpec.describe LambdaFunctions::Handler, '.deploy step events' do
     world.item['deploy_id'] = 'deploy-someone-else'
 
     expect(step('Finish', 'AllowUndeploy' => true, 'ExecutionArn' => nil))
-      .to eq(Status: :deploy_aborted, Reported: false)
+      .to eq(Status: :deploy_aborted, Error: ['Deploy was cancelled.'], Reported: false)
     expect(events_after_started).to be_empty
   end
 
