@@ -205,7 +205,6 @@ module Deployomat
         finish('failed', result, errors, ami)
       end
 
-      # The step says why it aborted, in Error. Nothing is made up for it here.
       def aborted(errors: nil, ami: @ami, **result)
         finish('aborted', result, errors, ami)
       end
