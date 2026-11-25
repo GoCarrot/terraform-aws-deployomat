@@ -88,6 +88,19 @@ RSpec.describe 'state_machines/deploy.json' do # rubocop:disable RSpec/DescribeC
     expect(reads.reject { |_, p| p.empty? }).to eq({})
   end
 
+  # Each cancelled ending takes its Error from the step whose Reported it copies, so the reason is the
+  # step's own, not a wording written into the state machine.
+  it 'takes the Error for every CancelledAt* ending from the step that decided it, with no literal' do
+    cancelled = states.keys.grep(/\ACancelledAt/)
+    expect(cancelled).to match_array(%w[CancelledAtCheckHealthy CancelledAtRollout CancelledAtCoalesce CancelledAtBake])
+
+    cancelled.each do |name|
+      parameters = states[name]['Parameters']
+      expect(parameters).not_to have_key('Error')
+      expect(parameters['Error.$']).to eq(parameters['Reported.$'].sub(/Reported\z/, 'Error')), name
+    end
+  end
+
   # The cancel of a concurrent deploy can lose the deploy lock to another run's cancel. The loser is
   # superseded: aborted through Report, not failed, and not back to Start to fight the winner.
   it 'ends a deploy whose cancel lost the lock as aborted, not failed, and does not retry Start' do
