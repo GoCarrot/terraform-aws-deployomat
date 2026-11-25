@@ -164,10 +164,18 @@ module Deployomat
       @config&.fetch(UNDEPLOY_STATE_NAME, '') == ALLOW
     end
 
-    ASSERT_START_CANCEL_UPDATE_EXPR = "SET #{ID_VAR} = #{NEW_ID_KEY}"
+    CANCEL_BY_VAR = '#CANCEL_BY'
+    CANCEL_BY_KEY = ':cancel_by'
+    CANCEL_BY_NAME = 'cancel_by'
+    CANCEL_BY_DEPLOY = 'deploy'
+    CANCEL_BY_MANUAL = 'manual'
+
+    ASSERT_START_CANCEL_UPDATE_EXPR = "SET #{ID_VAR} = #{NEW_ID_KEY}, #{CANCEL_BY_VAR} = #{CANCEL_BY_KEY}"
     ASSERT_START_CANCEL_CONDITION_EXPR = "#{ID_VAR} = #{OLD_ID_KEY} AND attribute_exists(#{ASG_VAR}) AND #{ASG_VAR} <> #{EMPTY_KEY}"
 
-    def assert_start_cancel
+    # by_deploy: a deploy started this cancel for a newer deploy, rather than someone cancelling by hand.
+    # cancel_by stays on the row once the newer deploy starts, so the old deploy can still say why it lost the lock.
+    def assert_start_cancel(by_deploy: false)
       @config = @client.update_item(
         table_name: ENV['DEPLOYOMAT_TABLE'],
         return_values: 'ALL_NEW',
@@ -176,14 +184,23 @@ module Deployomat
         condition_expression: ASSERT_START_CANCEL_CONDITION_EXPR,
         expression_attribute_names: {
           ID_VAR => ID_NAME,
-          ASG_VAR => ASG_NAME
+          ASG_VAR => ASG_NAME,
+          CANCEL_BY_VAR => CANCEL_BY_NAME
         },
         expression_attribute_values: {
           NEW_ID_KEY => @deploy_id,
           OLD_ID_KEY => @config&.fetch(ID_NAME, nil),
-          EMPTY_KEY => ''
+          EMPTY_KEY => '',
+          CANCEL_BY_KEY => by_deploy ? CANCEL_BY_DEPLOY : CANCEL_BY_MANUAL
         }
       ).attributes
+    end
+
+    # Re-reads the row and says whether a cancel a deploy started took the lock from this run. A row
+    # written before cancel_by existed reads as a manual cancel.
+    def lock_taken_by_deploy?
+      reload
+      @config&.fetch(CANCEL_BY_NAME, nil) == CANCEL_BY_DEPLOY
     end
 
     ASSERT_START_DEPLOY_UPDATE_EXPR = "SET #{ID_VAR} = #{NEW_ID_KEY}, #{ASG_VAR} = #{ASG_KEY}"

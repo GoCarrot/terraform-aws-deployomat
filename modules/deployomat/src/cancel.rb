@@ -24,9 +24,10 @@ module Deployomat
 
     def_delegators :@config, :account_name, :service_name, :prefix, :deploy_id, :params
 
-    def initialize(config, reporter:)
+    def initialize(config, reporter:, by_deploy: false)
       @config = config
       @reporter = reporter
+      @by_deploy = by_deploy
     end
 
     # A conditional write failing means another run took the deploy lock row over, usually the
@@ -53,7 +54,7 @@ module Deployomat
       end
 
       puts "Asserting start of cancel"
-      @config.assert_start_cancel
+      @config.assert_start_cancel(by_deploy: @by_deploy)
       puts "Cancel operation asserted"
       # A cancel that finds nothing to cancel returns before here, and cancel.json reports that ending.
       @reporter.emit('started')

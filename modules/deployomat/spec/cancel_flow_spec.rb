@@ -13,9 +13,9 @@ RSpec.describe LambdaFunctions::Handler, '.cancel' do
 
   # A cancel a deploy started for a newer deploy carries its parent's execution ARN; a manual one doesn't.
   def cancel_from(by_deploy, name)
-    input = by_deploy ? base_event.merge('AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID' => DEPLOY_EXECUTION_ARN) : base_event
+    parent = by_deploy ? { 'AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID' => DEPLOY_EXECUTION_ARN } : {}
     event = base_event.merge('DeployId' => 'exec-c', 'Step' => name, 'ExecutionArn' => CANCEL_EXECUTION_ARN,
-                             'AllInput' => input)
+                             'AllInput' => base_event.merge(parent))
     LambdaFunctions::Handler.cancel(event: event, context: nil)
   end
 
