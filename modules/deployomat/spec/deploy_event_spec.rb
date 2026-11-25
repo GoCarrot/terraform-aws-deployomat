@@ -168,10 +168,11 @@ RSpec.describe Deployomat::DeployEvent do
         .to eq([['failed', 'fail', ['boom']], ['completed', 'complete', []]])
     end
 
-    it 'says why a deploy was aborted when the step gave no error' do
+    it 'puts the reason the step gave for an abort, and no made-up one' do
+      reporter.aborted(Status: :deploy_aborted, Error: ['Deploy was cancelled.'])
       reporter.aborted(Status: :deploy_aborted)
 
-      expect(put.first['errors']).to eq([described_class::CANCELLED])
+      expect(put.map { |d| d['errors'] }).to eq([['Deploy was cancelled.'], []])
     end
 
     it 'puts nothing for a run on an older definition, which passes no ExecutionArn' do
